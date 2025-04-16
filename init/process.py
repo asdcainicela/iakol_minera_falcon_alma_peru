@@ -98,22 +98,24 @@ class PersonCounter:
         return None
 
     def distance_to_polygon(self, point, polygon):
+        #importante!!
         """Calcula la distancia mínima de un punto a un polígono"""
         return abs(cv2.pointPolygonTest(polygon, point, True))
 
     def calculate_center(self, box):
         """Calcula el centro de un bounding box"""
         x1, y1, x2, y2 = box
-        return ((x1 + x2) / 2, (y1 + y2) / 2)
+        return ((x1 + x2) / 2, (y1 + y2) / 2) 
+    #ok ! all ok
 
     def calculate_velocity(self, old_center, new_center, time_diff):
         """Calcula el vector de velocidad entre dos puntos"""
         if old_center is None or time_diff == 0:
             return (0, 0)
         return (
-            (new_center[0] - old_center[0]) / time_diff,
-            (new_center[1] - old_center[1]) / time_diff
-        )
+            (new_center[0] - old_center[0]) / time_diff, #x
+            (new_center[1] - old_center[1]) / time_diff #y
+        ) #(x,y) ok!
 
     def get_original_id(self, track_id):
         visited = set()
