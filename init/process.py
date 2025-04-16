@@ -20,22 +20,28 @@ class PersonCounter:
         """
         Inicializa el contador de personas
         """
-        self.polygons = polygons
+        self.polygons = polygons # polygons
         self.api_url = "https://fn-va-panto.azurewebsites.net/api/camera-region-data"
 
+        #initial configuration de 
         default_config = {
-            'max_frames_missing': 360,
-            'approaching_threshold': 800, ##500  anterior
-            'track_memory_time': 30.0,
-            'min_entry_distance': 50,
-            'debug': True
+            'max_frames_missing': 360,  #  12 s a 30 FPS, #tmax  ausente antes de ser eliminado 
+            'approaching_threshold': 800,  # ||.|| px para considerar que dos objetos están aproximándose
+            'track_memory_time': 30.0,  # #Ts se mantiene el history de tracking para cada objet 
+            'min_entry_distance': 50,  # ||.||min en px para registrar entrada en una zona de interés
+            'debug': True  # ok/ok'n mensajes de depuración en console
         }
 
-        self.config = default_config
-        if config is not None:
-            self.config.update(config)
+        #  configuración por defecto 
+        self.config = default_config  # Copia los valores predeterminados
 
-        # Estado principal de las personas
+        # Si se proporcionó una configuración personalizada (config no es None)
+        if config is not None:
+            # update la configuración por defecto con los valores personalizados
+            self.config.update(config)
+            
+
+        # Estado principal de las personas (se puede decir inicial ok!)
         self.person_states = defaultdict(lambda: {
             'region': None,
             'last_center': None,
