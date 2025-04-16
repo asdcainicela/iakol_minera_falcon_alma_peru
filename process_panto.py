@@ -396,11 +396,21 @@ class PersonCounter:
         if results[0].boxes is not None:
             boxes = results[0].boxes
             for box in boxes:
+                """
                 if not hasattr(box, 'id'):
                     continue
                 if box.id is None:
                     continue
                 track_id = int(box.id.item())
+                """
+                #fixed by -------------------------------------
+                if not hasattr(box, 'id') or box.id is None:
+                    continue
+                try:
+                    track_id = int(box.id.item())
+                except Exception:
+                    continue 
+
                 xyxy = box.xyxy[0].cpu().numpy()
                 center = self.calculate_center(xyxy)
                 current_region = self.get_region(center)
@@ -518,6 +528,10 @@ class PersonCounter:
 
         # Actualizar tracks perdidos
         for track_id in list(self.person_states.keys()):
+            #------- new code
+            if track_id is None:
+                continue  # Evita errores por IDs inválidos
+            #-------- new code
             if track_id not in current_tracks:
                 data = self.person_states[track_id]
                 data['frames_missing'] += 1
