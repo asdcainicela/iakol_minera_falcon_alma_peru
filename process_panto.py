@@ -263,7 +263,7 @@ class PersonCounter:
 
             for track in potential_tracks:
 #----------------------------------------------------------------
-                if (track['original_id'] == new_track_id or track['current_id'] == new_track_id) and track['frames_missing'] == 0:
+                if (track['original_id'] == new_track_id) or ((track['current_id'] == new_track_id) and (track['frames_missing'] == 0)):
                     continue
 
                 current_max_distance = max_allowed_distance
