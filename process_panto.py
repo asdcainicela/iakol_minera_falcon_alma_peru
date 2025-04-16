@@ -129,29 +129,6 @@ class PersonCounter:
         return last_valid
 
 
-    """
-    def get_original_id(self, track_id):
-        
-        #Obtiene el ID original siguiendo la cadena de reasignaciones
-         
-        visited = set()
-        current_id = track_id
-
-        while current_id is not None and current_id not in visited:
-            visited.add(current_id)
-            if current_id in self.person_states:
-                original = self.person_states[current_id].get('original_id')
-                if original is None:
-                    break
-                current_id = original
-            elif current_id in self.id_history:
-                current_id = self.id_history[current_id].get('original_id')
-            else:
-                break
-
-        return current_id
-    """
-
     def is_id_active(self, track_id, exclude_id=None):
         """
         Verifica si un ID está activo en cualquier parte de la imagen
