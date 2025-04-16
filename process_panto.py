@@ -16,12 +16,13 @@ class PersonCounter:
         """
         Inicializa el contador de personas
         """
-        self.polygons = polygons
+        self.polygons = polygons # polygons
         self.api_url = "https://fn-va-panto.azurewebsites.net/api/camera-region-data"
 
+        #config initial para 
         default_config = {
             'max_frames_missing': 360,
-            'approaching_threshold': 800, ##500  anterior
+            'approaching_threshold': 500, ##500  anterior
             'track_memory_time': 30.0,
             'min_entry_distance': 50,
             'debug': True
@@ -285,7 +286,7 @@ class PersonCounter:
                     if self.config['debug']:
                         print(f"  Descartando ID {track['original_id']}: distancia {track['real_distance']:.1f} > {current_max_distance:.1f}")
                     continue
-  #------------------------------------------------------------------              
+                #------------------------------------------------------------------              
                 # Si el track o relacionados estan inactivos (frames_missing != 0)
                 if not self.is_id_active(track['original_id'], exclude_id=new_track_id):
                     # Verificar que el original_id no esté ya siendo usado activamente por otro track
@@ -570,7 +571,7 @@ class PersonCounter:
                     if self.config['debug']: # Condicional para el debug
                         print(f"[DEBUG]    Eliminando track {track_id} por inactividad (frames perdidos: {data['frames_missing']})") # [DEBUG]
 
-                    del self.person_states[track_id]
+                    del self.person_states[track_id] # eliminó del -
 
         return self.transition_counts, self.get_average_times(), self.id_history
 
