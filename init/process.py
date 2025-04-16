@@ -10,6 +10,10 @@ from threading import Thread
 from ultralytics import YOLO
 from collections import defaultdict
 
+from libtrack import * # libreria propia
+
+path_config = path_yml("mkdocs_video.yml")
+
 
 class PersonCounter:
     def __init__(self, polygons, config=None):
@@ -21,7 +25,7 @@ class PersonCounter:
 
         default_config = {
             'max_frames_missing': 360,
-            'approaching_threshold': 500,
+            'approaching_threshold': 800, ##500  anterior
             'track_memory_time': 30.0,
             'min_entry_distance': 50,
             'debug': True
@@ -65,15 +69,16 @@ class PersonCounter:
         })
 
     def send_metadata(self, metadata):
-        print(f"Metadata a enviar: {metadata}")
-        try:
-            response = requests.post(self.api_url, json=metadata)
-            if response.status_code == 200:
-                print("Metadata enviada con éxito.")
-            else:
-                print(f"Error al enviar metadata: {response.status_code}, {response.text}")
-        except Exception as e:
-            print(f"Error al conectar con la API: {e}")
+        pass
+        # print(f"Metadata a enviar: {metadata}")
+        # try:
+        #     response = requests.post(self.api_url, json=metadata)
+        #     if response.status_code == 200:
+        #         print("Metadata enviada con éxito.")
+        #     else:
+        #         print(f"Error al enviar metadata: {response.status_code}, {response.text}")
+        # except Exception as e:
+        #     print(f"Error al conectar con la API: {e}")
 
     def point_in_polygon(self, point, polygon):
         """Verifica si un punto está dentro de un polígono"""
@@ -105,25 +110,28 @@ class PersonCounter:
         )
 
     def get_original_id(self, track_id):
-        """
-        Obtiene el ID original siguiendo la cadena de reasignaciones
-        """
         visited = set()
         current_id = track_id
+        last_valid = current_id
 
         while current_id is not None and current_id not in visited:
             visited.add(current_id)
+
             if current_id in self.person_states:
                 original = self.person_states[current_id].get('original_id')
-                if original is None:
-                    break
-                current_id = original
             elif current_id in self.id_history:
-                current_id = self.id_history[current_id].get('original_id')
+                original = self.id_history[current_id].get('original_id')
             else:
                 break
 
-        return current_id
+            if original is None:
+                break
+
+            last_valid = original
+            current_id = original
+
+        return last_valid
+
 
     def is_id_active(self, track_id, exclude_id=None):
         """
@@ -258,7 +266,8 @@ class PersonCounter:
             max_allowed_distance = self.config['approaching_threshold'] * 2
 
             for track in potential_tracks:
-                if track['original_id'] == new_track_id or track['current_id'] == new_track_id and track['frames_missing'] == 0:
+#----------------------------------------------------------------
+                if (track['original_id'] == new_track_id) or ((track['current_id'] == new_track_id) and (track['frames_missing'] == 0)):
                     continue
 
                 current_max_distance = max_allowed_distance
@@ -267,10 +276,11 @@ class PersonCounter:
 
                 # Se descarta el posible track si supera la distancia maxima umbral
                 if track['real_distance'] > current_max_distance:
-                    if self.config['debug']:
-                        print(f"  Descartando ID {track['original_id']}: distancia {track['real_distance']:.1f} > {current_max_distance:.1f}")
+                    if self.config['debug']: #----------- PARA EL DEBUG
+                        print(f"[DEBUG]  Rechazado ID {track['original_id']} como candidato. Distancia: {track['real_distance']:.1f}, umbral: {current_max_distance:.1f}") ## [DEBUG] EXTRA
+                        print(f"         Descartando ID {track['original_id']}: distancia {track['real_distance']:.1f} > {current_max_distance:.1f}")
                     continue
-                
+  #------------------------------------------------------------------              
                 # Si el track o relacionados estan inactivos (frames_missing != 0)
                 if not self.is_id_active(track['original_id'], exclude_id=new_track_id):
                     self.person_states[track['original_id']]['frames_missing'] = 0
@@ -393,11 +403,21 @@ class PersonCounter:
         if results[0].boxes is not None:
             boxes = results[0].boxes
             for box in boxes:
+                """
                 if not hasattr(box, 'id'):
                     continue
                 if box.id is None:
                     continue
                 track_id = int(box.id.item())
+                """
+                #fixed by -------------------------------------
+                if not hasattr(box, 'id') or box.id is None:
+                    continue
+                try:
+                    track_id = int(box.id.item())
+                except Exception:
+                    continue 
+
                 xyxy = box.xyxy[0].cpu().numpy()
                 center = self.calculate_center(xyxy)
                 current_region = self.get_region(center)
@@ -416,7 +436,13 @@ class PersonCounter:
                     # Si esta dentro de una region valida
                     if track_id not in self.person_states:
                         # Si el track es nuevo
+                        if self.config['debug']:
+                            print(f"[DEBUG]  Nuevo track detectado: ID {track_id}, centro: {center}, región: {current_region}") ## [DEBUG]] extra------------
                         existing_id = self.find_existing_id(current_time, track_id, center)
+
+                        if self.config['debug']:
+                            print(f"[DEBUG]   Reasignación detectada: ID nuevo {track_id} -> ID existente {existing_id}") #------- [DEBUG] extra 
+
 
                         if existing_id is not None:
                             # Si reasigna original_id -> resetea frames perdidos
@@ -474,6 +500,9 @@ class PersonCounter:
             track_id = detection['track_id']
             center = detection['center']
             region = detection['region']
+            #print(f"[DEBUG] --- new Track found : {track_id}")
+            #print(f"[DEBUG] --- new Track found : {center}")
+            #print(f"[DEBUG] --- new Track found : {region}")
 
             prev_state = self.person_states[track_id]
             prev_region = prev_state['region']
@@ -509,6 +538,10 @@ class PersonCounter:
 
         # Actualizar tracks perdidos
         for track_id in list(self.person_states.keys()):
+            #------- new code
+            if track_id is None:
+                continue  # Evita errores por IDs inválidos
+            #-------- new code
             if track_id not in current_tracks:
                 data = self.person_states[track_id]
                 data['frames_missing'] += 1
@@ -521,6 +554,8 @@ class PersonCounter:
                         # Actualizar tiempos persistentes
                         original_id = self.get_original_id(track_id)
                         self.persistent_times[original_id][data['region']] += time_spent
+                    if self.config['debug']: # Condicional para el debug
+                        print(f"[DEBUG]    Eliminando track {track_id} por inactividad (frames perdidos: {data['frames_missing']})") # [DEBUG]
 
                     del self.person_states[track_id]
 
@@ -632,121 +667,25 @@ class PersonCounter:
             state = self.person_states[track_id]
             original_id = self.get_original_id(track_id)
 
-            print(f"\nInformación del Track {track_id}:")
-            print(f"ID Original: {original_id}")
-            print(f"Región actual: {state['region']}")
-            print(f"Frames perdidos: {state['frames_missing']}")
-            print("\nTiempos acumulados por región:")
+            print(f"[DEBUG]   \nInformación del Track {track_id}:")
+            print(f"[DEBUG]   ID Original: {original_id}")
+            print(f"[DEBUG]    Región actual: {state['region']}")
+            print(f"[DEBUG]   Frames perdidos: {state['frames_missing']}")
+            print("[DEBUG]   \nTiempos acumulados por región:")
 
             total_times = self.get_persistent_times(track_id, current_time)
             for region, time_spent in total_times.items():
-                print(f"  Región {region}: {time_spent:.1f} segundos")
+                print(f"[DEBUG]     Región {region}: {time_spent:.1f} segundos")
 
             if track_id in self.id_history:
                 history = self.id_history[track_id]
-                print(f"\nHistorial de reasignación:")
-                print(f"  Reasignado de: ID {history['original_id']}")
-                print(f"  Frame de reasignación: {history['reassigned_at_frame']}")
+                print(f"[DEBUG]   \nHistorial de reasignación:")
+                print(f"[DEBUG]     Reasignado de: ID {history['original_id']}")
+                print(f"[DEBUG]     Frame de reasignación: {history['reassigned_at_frame']}")
         else:
-            print(f"El track {track_id} no está activo actualmente")
+            print(f"[DEBUG]   El track {track_id} no está activo actualmente")
 
-            
-# Funciones auxiliares para visualización
-def draw_text_with_background(frame, text, pos, font_scale=1, thickness=2, text_color=(255, 255, 255), bg_color=(0, 0, 0), alpha=0.5):
-    """
-    Dibuja texto con un fondo semi-transparente para mejorar la legibilidad
-    """
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    (text_width, text_height), _ = cv2.getTextSize(text, font, font_scale, thickness)
-
-    x, y = pos
-    padding = 5
-    bg_rect = ((x - padding, y - text_height - padding),
-               (x + text_width + padding, y + padding))
-
-    overlay = frame.copy()
-    cv2.rectangle(overlay, bg_rect[0], bg_rect[1], bg_color, -1)
-    cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
-    cv2.putText(frame, text, (x, y), font, font_scale, text_color, thickness)
-
-def draw_tracking_info(frame, box, track_id, region, confidence, person_state, counter, current_time):
-    """
-    Dibuja la información de tracking sobre cada persona detectada
-    """
-    x1, y1, x2, y2 = map(int, box)
-
-    # Dibujar bounding box
-    original_id = counter.get_original_id(track_id)
-    if original_id != track_id:
-        # Naranja para IDs reasignados
-        box_color = (0, 165, 255)
-    else:
-        # Verde para IDs originales
-        box_color = (0, 255, 0)
-
-    cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
-
-    # Preparar texto con ID y reasignación
-    if original_id != track_id:
-        text = f"ID:{track_id} -> ID:{original_id}"  # Formato corregido
-    else:
-        text = f"ID:{track_id}"
-
-    if region is not None:
-        text += f" | R{region}"
-    text += f" | {confidence:.2f}"
-
-    # Agregar tiempo en región si está disponible
-    if region is not None and track_id in counter.person_states:
-        total_time = counter.get_total_time_in_region(track_id, region, current_time)
-        if total_time > 0:
-            text += f" | {total_time:.1f}s"
-
-    # Dibujar texto con fondo
-    draw_text_with_background(
-        frame,
-        text,
-        (x1, y1 - 10),
-        font_scale=0.6,
-        thickness=1,
-        text_color=(255, 255, 255),
-        bg_color=(0, 100, 0) if original_id == track_id else (165, 100, 0)
-    )
-
-def draw_region_info(frame, polygons, counter, current_time):
-    """
-    Dibuja información de las regiones, incluyendo contadores
-    """
-    for i, polygon in enumerate(polygons):
-        # Dibujar polígono
-        cv2.polylines(frame, [polygon], True, (0, 255, 0), 2)
-
-def time_to_frames(time_str, fps):
-    """Convierte tiempo en formato mm:ss a número de frames"""
-    minutes, seconds = map(int, time_str.split(':'))
-    total_seconds = minutes * 60 + seconds
-    return int(total_seconds * fps)
-
-# Cargar configuración desde el archivo .yml
-def load_camera_config(camera_number, config_path="mkdocs.yml"):
-    print(f"Numero de camara: {camera_number}", flush=True)
-    with open(config_path, "r") as file:
-        config = yaml.safe_load(file)
-
-    cameras = config.get("cameras", {})
-    # print(f"Camaras: {cameras}", flush=True)
-    if camera_number not in cameras:
-        raise ValueError(f"No hay configuración para la cámara {camera_number}")
-
-    cam_config = cameras[camera_number]
-    input_video = cam_config["input_video"]
-    output_video = cam_config["output_video"]
-    camera_sn = cam_config["camera_sn"]
-    save_data = cam_config["save_data"]
-    # polygons = [np.array(polygon, np.int32) for polygon in cam_config["polygons"]]
-    polygons = {polygon[0]: np.array(polygon[1], np.int32) for polygon in cam_config["polygons"]}
-
-    return input_video, output_video, polygons, camera_sn, save_data
+  
 
 def process_video(input_path, output_path, model_path, polygons, camera_id, show_display=False, show_drawings=False, save_frame=False):
     """
@@ -764,7 +703,7 @@ def process_video(input_path, output_path, model_path, polygons, camera_id, show
         print("Error al conectar con el stream RTSP")
         return
     
-    print("Conexión establecida. Mostrando stream...")
+    print("[DEBUG]   Conexión establecida. Mostrando stream...")
 
     # Calcular los frames de inicio y fin
     start_time_sec = 25 * 60 + 30    # 25 minutos con 30 segundos
@@ -788,51 +727,54 @@ def process_video(input_path, output_path, model_path, polygons, camera_id, show
         ret, frame = cap.read()
 
         if not ret:
-            print("Error al recibir frame. Saliendo...")
+            print("[DEBUG]   Error al recibir frame. Saliendo...")
             break
+        
+        try: 
+            results = model.track(frame, persist=True, classes=[0], conf=0.5, verbose=False, half=True)
 
-        results = model.track(frame, persist=True, classes=[0], conf=0.5, verbose=False, half=True)
+            # Procesar resultados
+            transitions, avg_times, id_history = counter.process_frame(results, start_time, camera_id)
 
-        # Procesar resultados
-        transitions, avg_times, id_history = counter.process_frame(results, start_time, camera_id)
+            if show_drawings:
+                # Dibujar información de regiones y tracking
+                draw_region_info(frame, polygons, counter, start_time)
 
-        if show_drawings:
-            # Dibujar información de regiones y tracking
-            draw_region_info(frame, polygons, counter, start_time)
+                # Dibujar información de tracking para cada persona
+                if results[0].boxes is not None:
+                    boxes = results[0].boxes
+                    for box in boxes:
+                        if not hasattr(box, 'id'):
+                            continue
+                        if box.id is None:
+                            continue
 
-            # Dibujar información de tracking para cada persona
-            if results[0].boxes is not None:
-                boxes = results[0].boxes
-                for box in boxes:
-                    if not hasattr(box, 'id'):
-                        continue
-                    if box.id is None:
-                        continue
+                        track_id = int(box.id.item())
+                        xyxy = box.xyxy[0].cpu().numpy()
+                        conf = float(box.conf.item())
+                        region = counter.get_region(counter.calculate_center(xyxy))
+                        person_state = counter.person_states.get(track_id, {})
 
-                    track_id = int(box.id.item())
-                    xyxy = box.xyxy[0].cpu().numpy()
-                    conf = float(box.conf.item())
-                    region = counter.get_region(counter.calculate_center(xyxy))
-                    person_state = counter.person_states.get(track_id, {})
+                        draw_tracking_info(frame, xyxy, track_id, region, conf, person_state, counter, start_time)
 
-                    draw_tracking_info(frame, xyxy, track_id, region, conf, person_state, counter, start_time)
+            if save_frame:
+                out.write(frame)
 
-        if save_frame:
-            out.write(frame)
+            if show_display:
+                frame = cv2.resize(frame, (1280, 720))
+                cv2.imshow("RTSP Stream", frame)
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    break
+                elif key == ord('p'):
+                    cv2.waitKey(0)
 
-        if show_display:
-            frame = cv2.resize(frame, (1280, 720))
-            cv2.imshow("RTSP Stream", frame)
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                break
-            elif key == ord('p'):
-                cv2.waitKey(0)
-
-        current_frame += 1
-        end_time = time.time()
-        fps = 1/(end_time-start_time)
-        print(f"FPS del procesamiento: {fps:.2f}, {len(results[0].boxes)} personas en el frame", flush=True)
+            current_frame += 1
+            end_time = time.time()
+            fps = 1/(end_time-start_time)
+            # print(f"FPS del procesamiento: {fps:.2f}, {len(results[0].boxes)} personas en el frame", flush=True)
+        except Exception as e:
+            print(f"Error detectado: {e}")
 
     cap.release()
     if save_frame:
@@ -842,15 +784,16 @@ def process_video(input_path, output_path, model_path, polygons, camera_id, show
 
     return transitions, avg_times, id_history
 
+
 # Ejemplo de uso del código
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Procesar video desde una cámara específica")
     parser.add_argument("camera_number", type=int, help="Número de cámara a usar (1-7)")
-    parser.add_argument("--config", type=str, default="mkdocs.yml", help="Ruta al archivo de configuración YAML")
+    parser.add_argument("--config", type=str, default="mkdocs_video.yml", help="Ruta al archivo de configuración YAML")
     args = parser.parse_args()
 
     try:
-        input_video, output_video, polygons, camera_sn, save_data_dir = load_camera_config(args.camera_number, args.config)
+        input_video, output_video, polygons, camera_sn= load_camera_config(args.camera_number, args.config)
     except ValueError as e:
         print(e)
         exit(1)
@@ -864,14 +807,13 @@ if __name__ == "__main__":
         model_path=model_path,
         polygons=polygons,
         camera_id=camera_sn,
-        save_frames_dir = save_data_dir,
         show_display=False,
-        show_drawings=False,
-        save_frame=False
+        show_drawings=True,
+        save_frame=True
     )
 
     # Imprimir resultados finales
-    print("\n=== Resultados Finales ===")
+    print("[DEBUG]   \n=== Resultados Finales ===")
     print("\nTransiciones entre regiones:")
     for from_region in sorted(transitions.keys(), key=lambda x: str(x)):
         for to_region in sorted(transitions[from_region].keys(), key=lambda x: str(x)):
