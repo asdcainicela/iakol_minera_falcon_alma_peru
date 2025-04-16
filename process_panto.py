@@ -106,9 +106,34 @@ class PersonCounter:
         )
 
     def get_original_id(self, track_id):
-        """
-        Obtiene el ID original siguiendo la cadena de reasignaciones
-        """
+        visited = set()
+        current_id = track_id
+        last_valid = current_id
+
+        while current_id is not None and current_id not in visited:
+            visited.add(current_id)
+
+            if current_id in self.person_states:
+                original = self.person_states[current_id].get('original_id')
+            elif current_id in self.id_history:
+                original = self.id_history[current_id].get('original_id')
+            else:
+                break
+
+            if original is None:
+                break
+
+            last_valid = original
+            current_id = original
+
+        return last_valid
+
+
+    """
+    def get_original_id(self, track_id):
+        
+        #Obtiene el ID original siguiendo la cadena de reasignaciones
+         
         visited = set()
         current_id = track_id
 
@@ -125,6 +150,7 @@ class PersonCounter:
                 break
 
         return current_id
+    """
 
     def is_id_active(self, track_id, exclude_id=None):
         """
@@ -259,7 +285,8 @@ class PersonCounter:
             max_allowed_distance = self.config['approaching_threshold'] * 2
 
             for track in potential_tracks:
-                if track['original_id'] == new_track_id or track['current_id'] == new_track_id and track['frames_missing'] == 0:
+#----------------------------------------------------------------
+                if (track['original_id'] == new_track_id or track['current_id'] == new_track_id) and track['frames_missing'] == 0:
                     continue
 
                 current_max_distance = max_allowed_distance
@@ -273,9 +300,16 @@ class PersonCounter:
                     if self.config['debug']:
                         print(f"  Descartando ID {track['original_id']}: distancia {track['real_distance']:.1f} > {current_max_distance:.1f}")
                     continue
-                
+  #------------------------------------------------------------------              
                 # Si el track o relacionados estan inactivos (frames_missing != 0)
                 if not self.is_id_active(track['original_id'], exclude_id=new_track_id):
+                    # Verificar que el original_id no esté ya siendo usado activamente por otro track
+                    if any(tid != new_track_id and state.get('original_id') == track['original_id'] and state['frames_missing'] == 0
+                        for tid, state in self.person_states.items()):
+                        if self.config['debug']:
+                            print(f"[DEBUG]    No se reasigna {new_track_id} a {track['original_id']} porque ya está activo con otro ID") ## new [DEBUG]
+                        continue
+                     
                     self.person_states[track['original_id']]['frames_missing'] = 0
                     if self.config['debug']:
                         print(f"[DEBUG]  Reasignado ID {track['original_id']} para nueva detección {new_track_id}") #fixed [DEBUG] name
