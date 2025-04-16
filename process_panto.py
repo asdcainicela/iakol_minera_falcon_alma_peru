@@ -173,6 +173,14 @@ class PersonCounter:
             # if self.config['debug']:
             #     print(f"Track {track_id} acercándose a región {closest_region}, distancia: {min_distance:.1f}")
 
+    def is_original_id_in_use(self, original_id, exclude_id=None):
+        for tid, state in self.person_states.items():
+            if tid == exclude_id:
+                continue
+            if state.get('original_id') == original_id and state['frames_missing'] == 0:
+                return True
+        return False
+
     def find_existing_id(self, current_time, new_track_id, new_center):
         """
         Busca un ID existente que podría corresponder a esta nueva detección
@@ -281,11 +289,15 @@ class PersonCounter:
                 # Si el track o relacionados estan inactivos (frames_missing != 0)
                 if not self.is_id_active(track['original_id'], exclude_id=new_track_id):
                     # Verificar que el original_id no esté ya siendo usado activamente por otro track
-                    if any(tid != new_track_id and state.get('original_id') == track['original_id'] and state['frames_missing'] == 0
+                    if self.is_original_id_in_use(track['original_id'], exclude_id=new_track_id):
+                        if self.config['debug']:
+                            print(f"[DEBUG]    No se reasigna {new_track_id} a {track['original_id']} porque ya está activo con otro ID")
+                        continue
+                    """if any(tid != new_track_id and state.get('original_id') == track['original_id'] and state['frames_missing'] == 0
                         for tid, state in self.person_states.items()):
                         if self.config['debug']:
                             print(f"[DEBUG]    No se reasigna {new_track_id} a {track['original_id']} porque ya está activo con otro ID") ## new [DEBUG]
-                        continue
+                        continue"""
                      
                     self.person_states[track['original_id']]['frames_missing'] = 0
                     if self.config['debug']:
