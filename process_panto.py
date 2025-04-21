@@ -240,6 +240,9 @@ class PersonCounter:
             # Tomar el primer track mas cercano que no sea el mismo ID
             for track in all_tracks:
                 if track['original_id'] != new_track_id and track['current_id'] != new_track_id and track['frames_missing'] != 0:
+                    if self.config['debug'] and track['current_id'] == new_track_id:
+                        print(f"[DUPLICADO] Posible duplicación: ID {new_track_id} ya presente como {track['current_id']}")
+
                     self.person_states[track['original_id']]['frames_missing'] = 0
                     if self.config['debug']:
                         print(f"Asignando ID más cercano: {track['original_id']}")
@@ -416,10 +419,16 @@ class PersonCounter:
                 else:
                     # Si esta dentro de una region valida
                     if track_id not in self.person_states:
+                        if self.config['debug']:
+                            print(f"[CREACIÓN] Track nuevo detectado: ID {track_id} en región {current_region}")
+
                         # Si el track es nuevo
                         existing_id = self.find_existing_id(current_time, track_id, center)
 
                         if existing_id is not None:
+                            if self.config['debug']:
+                                print(f"[REASIGNACIÓN] Detección ID {track_id} reasignada a ID existente {existing_id}")
+
                             # Si reasigna original_id -> resetea frames perdidos
                             self.person_states[existing_id]['frames_missing'] = 0
                             if self.config['debug']:
@@ -511,10 +520,16 @@ class PersonCounter:
         # Actualizar tracks perdidos
         for track_id in list(self.person_states.keys()):
             if track_id not in current_tracks:
+                if self.config['debug']: 
+                    print(f"[PERDIDO] Track {track_id} no detectado en este frame. Frames perdidos: {data['frames_missing'] + 1}")
+
                 data = self.person_states[track_id]
                 data['frames_missing'] += 1
 
                 if data['frames_missing'] > self.config['max_frames_missing']:
+                    if self.config['debug']:
+                        print(f"[ELIMINADO] Track {track_id} eliminado por inactividad. Región: {data['region']}, Tiempo desde entrada: {current_time - data['entry_time']:.1f}s")
+
                     if data['region'] is not None and data['entry_time'] is not None:
                         time_spent = current_time - data['entry_time']
                         data['time_in_regions'][data['region']] += time_spent
