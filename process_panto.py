@@ -57,6 +57,8 @@ class PersonCounter:
         self.current_frame_tracks = set()
         self.id_history = {}
 
+        self.original_map = {}  # map: track_id -> canonical original_id
+
         # Tracking de entradas por ID original
         self.region_stats = defaultdict(lambda: {
             'current_count': 0,
@@ -110,28 +112,10 @@ class PersonCounter:
 
     def get_original_id(self, track_id):
         """
-        Retorna el ID canónico (el menor) de toda la cadena de reasignaciones.
+        Devuelve el canonical ID fijado en original_map.
+        Si no existe entrada, devuelve el mismo track_id.
         """
-        ids = {track_id}
-        current = track_id
-
-        # Explorar id_history
-        while True:
-            if current in self.id_history:
-                parent = self.id_history[current]['original_id']
-            elif current in self.person_states and self.person_states[current].get('original_id') is not None:
-                parent = self.person_states[current]['original_id']
-            else:
-                break
-
-            # Evitar bucles infinitos
-            if parent in ids:
-                break
-            ids.add(parent)
-            current = parent
-
-        # Devolver siempre el menor ID de todos los vistos
-        return min(ids)
+        return self.original_map.get(track_id, track_id)
 
     def is_id_active(self, track_id, exclude_id=None):
         """
@@ -179,147 +163,78 @@ class PersonCounter:
  
     def find_existing_id(self, current_time, new_track_id, new_center):
         """
-        Busca un ID existente que podría corresponder a esta nueva detección
+        Busca un ID existente que podría corresponder a esta nueva detección,
+        descartando cualquier candidato que nunca haya existido y evitando IDs ya activos.
         """
-        potential_tracks = [] # Tracks que tienen menos de 720 frames perdidos y con track_id y original_id diferente de new_track_id
-        current_region = self.get_region(new_center)
-        all_tracks = []  # Fallback, solo tracks con track_id y original_id diferente de new_track_id
+        # 1) Sólo consideramos IDs que ya hayan estado en person_states o en id_history
+        seen_ids = set(self.person_states.keys()) | set(self.id_history.keys())
 
-        # Buscar en tracks activos y recientemente perdidos
+        potential_tracks = []
+        current_region = self.get_region(new_center)
+        all_tracks = []
+
         for track_id, state in self.person_states.items():
+            if track_id not in seen_ids:
+                #if self.config['debug']:
+                #    print(f"[IGNORADO] {track_id} nunca estuvo activo.")
+                continue
             if track_id == new_track_id:
                 continue
 
-            original_id = self.get_original_id(track_id)
-            if original_id == new_track_id:
+            orig = self.get_original_id(track_id)
+            if orig == new_track_id:
                 continue
 
+            # Sólo candidatos que estén “perdidos” (frames_missing > 0)
             if state['frames_missing'] == 0:
                 continue
 
-            if track_id in self.current_frame_tracks:
+            # No reasignar a un original que ya estamos usando este frame
+            if orig in self.active_original_id:
                 continue
 
+            # Calcular distancia real y predicha
             if state['last_center'] is not None:
-                distance = np.linalg.norm(
-                    np.array(new_center) - np.array(state['last_center'])
-                )
-
-                # Predicción de movimiento
+                dist = np.linalg.norm(np.array(new_center) - np.array(state['last_center']))
                 if state['velocity'] != (0, 0):
-                    time_diff = current_time - state['last_seen_time']
-                    predicted_x = state['last_center'][0] + state['velocity'][0] * time_diff
-                    predicted_y = state['last_center'][1] + state['velocity'][1] * time_diff
-                    predicted_distance = np.linalg.norm(
-                        np.array(new_center) - np.array((predicted_x, predicted_y))
-                    )
-                    distance = min(distance, predicted_distance)
+                    dt = current_time - state['last_seen_time']
+                    pred = np.array(state['last_center']) + np.array(state['velocity'])*dt
+                    dist = min(dist, np.linalg.norm(np.array(new_center)-pred))
 
-                # Factor de prioridad basado en la región
-                region_match = 1.0
-                if state['region'] == current_region:
-                    region_match = 0.5
-
-                track_info = {
+                region_match = 0.5 if state['region'] == current_region else 1.0
+                info = {
                     'current_id': track_id,
-                    'original_id': original_id,
-                    'distance': distance * region_match,
-                    'real_distance': distance,
+                    'original_id': orig,
+                    'distance': dist * region_match,
+                    'real_distance': dist,
                     'last_seen_time': state['last_seen_time'],
                     'frames_missing': state['frames_missing'],
-                    'region': state['region'],
-                    'source': 'active'
+                    'region': state['region']
                 }
+                all_tracks.append(info)
+                if state['frames_missing'] <= self.config['max_frames_missing']*2:
+                    potential_tracks.append(info)
 
-                # Solo agregar si no es el mismo ID o uno relacionado
-                if original_id != new_track_id and track_id != new_track_id and state['frames_missing'] != 0:
-                    all_tracks.append(track_info)
-                    if state['frames_missing'] <= self.config['max_frames_missing'] * 2 and state['frames_missing'] != 0:
-                        potential_tracks.append(track_info)
-
-        # Si no hay tracks potenciales, usar el más cercano de los tracks válidos
-        if not potential_tracks and all_tracks:
-            if self.config['debug']:
-                print(f"No se encontraron tracks potenciales para ID {new_track_id}, usando el más cercano")
-
-            # Ordenar todos los tracks válidos por distancia
-            all_tracks.sort(key=lambda x: (
-                x['real_distance'],
-                x['frames_missing'],
-                -x['last_seen_time']
-            ))
-            print(f"Todos los tracks: {all_tracks}", flush=True)
-
-            # Tomar el primer track mas cercano que no sea el mismo ID
-            for track in all_tracks:
-                if track['original_id'] in self.active_original_id:
-                    continue
-                if track['original_id'] != new_track_id and track['current_id'] != new_track_id and track['frames_missing'] != 0:
-                    self.person_states[track['original_id']].update({'frames_missing': 0})
-                    if self.config['debug']:
-                        print(f"Asignando ID más cercano: {track['original_id']}")
-                        print(f"  Distancia: {track['real_distance']:.1f}")
-                        print(f"  Region: {track['region']} -> {current_region}")
-                        print(f"----------------------------------------------------------------------------", flush=True)
-                    return track['original_id']
-
-        # Procesar potential_tracks si existen
+        # 2) Primero intentamos con potential_tracks
         if potential_tracks:
-            # Se ordena por frames perdidos
             potential_tracks.sort(key=lambda x: (
-                x['frames_missing'],
-                -x['last_seen_time'],
-                x['distance']
+                x['frames_missing'], -x['last_seen_time'], x['distance']
             ))
-
-            print(f"Tracks potenciales: {potential_tracks}", flush=True)
-
-            max_allowed_distance = self.config['approaching_threshold'] * 2
-
-            for track in potential_tracks:
-                if track['original_id'] == new_track_id or track['current_id'] == new_track_id:
+            max_dist = self.config['approaching_threshold'] * 2
+            for t in potential_tracks:
+                if t['real_distance'] > (max_dist * (2 if t['region']==current_region else 1)):
+                    #if self.config['debug']:
+                    #    print(f"[DESCARTADO] {t['original_id']} dist{t['real_distance']:.1f} > umbral")
                     continue
+                if not self.is_id_active(t['original_id'], exclude_id=new_track_id):
+                    #if self.config['debug']:
+                    #    print(f"[REASIGNANDO] {t['original_id']} para {new_track_id}")
+                    self.person_states[t['original_id']]['frames_missing'] = 0
+                    return t['original_id']
 
-                if track['frames_missing'] == 0:
-                    continue
-
-                if track['original_id'] in self.active_original_id:
-                    continue
-
-                current_max_distance = max_allowed_distance
-                if track['region'] == current_region:
-                    current_max_distance *= 2
-
-                # Se descarta el posible track si supera la distancia maxima umbral
-                if track['real_distance'] > current_max_distance:
-                    if self.config['debug']:
-                        print(f"  Descartando ID {track['original_id']}: distancia {track['real_distance']:.1f} > {current_max_distance:.1f}")
-                    continue
-                
-                # Si el track o relacionados estan inactivos (frames_missing != 0)
-                if not self.is_id_active(track['original_id'], exclude_id=new_track_id):
-                    self.person_states[track['original_id']].update({'frames_missing': 0})
-                    if self.config['debug']:
-                        print(f"Encontrado ID {track['original_id']} para nueva detección {new_track_id}")
-                        print(f"  Distancia real: {track['real_distance']:.1f}")
-                        print(f"  Region: {track['region']} -> {current_region}")
-                        print(f"----------------------------------------------------------------------------", flush=True)
-                    return track['original_id']
-
-        # Último recurso: usar el track válido más cercano
-        if all_tracks:
-            all_tracks.sort(key=lambda x: x['real_distance'])
-            for track in all_tracks:
-                if track['original_id'] in self.active_original_id:
-                    continue
-                if track['original_id'] != new_track_id and track['current_id'] != new_track_id and track['frames_missing'] != 0:
-                    self.person_states[track['original_id']].update({'frames_missing': 0})
-                    if self.config['debug']:
-                        print(f"Último recurso - usando ID: {track['original_id']}")
-                        print(f"  Distancia: {track['real_distance']:.1f}")
-                        print(f"  Region: {track['region']} -> {current_region}")
-                    return track['original_id']
-  
+        # 3) Si no hay ninguno válido, no reasignamos
+        #if self.config['debug']:
+        #    print(f"[SIN REASIGNACIÓN] No hay candidato válido para {new_track_id}")
         return None
 
     def handle_transition(self, track_id, old_region, new_region, current_time, camera_id):
@@ -417,22 +332,51 @@ class PersonCounter:
         all_current_tracks = set()
         new_detections = []
 
-        # Evalua las detecciones con id valido de un frame, extrae id, bbox, centro y region actual
+        # 1) Revisión de cada detección en el frame
         if results[0].boxes is not None:
-            boxes = results[0].boxes
-            for box in boxes:
-                if not hasattr(box, 'id'):
+            for box in results[0].boxes:
+                if not hasattr(box, 'id') or box.id is None:
                     continue
-                if box.id is None:
-                    continue
-                track_id = int(box.id.item())
+
+                # ————— Paso 2: inicializar mapping canonical —————
+                raw_id = int(box.id.item())
+                if raw_id not in self.original_map:
+                    # la primera vez que vemos raw_id, su original es él mismo
+                    self.original_map[raw_id] = raw_id
+            
+                #raw_id = int(box.id.item())
                 xyxy = box.xyxy[0].cpu().numpy()
                 center = self.calculate_center(xyxy)
                 current_region = self.get_region(center)
-                self.current_frame_tracks.add(track_id)
 
+                # 2) REASIGNACIÓN GLOBAL: aunque esté fuera de región,
+                #    intentamos mapear raw_id → existing_id
+                existing_id = self.find_existing_id(current_time, raw_id, center)
+                if existing_id is not None and existing_id != raw_id:
+                    #if self.config['debug']:
+                    #    prev_reg = self.person_states[existing_id]['region']
+                    #    print(f"[GLOBAL REASIGNACIÓN] {raw_id} → {existing_id} (antes en R{prev_reg})")
+                    # reset de frames missing y marcar reasignación
+                    # ————— Paso 3: heredar el canonical de existing_id —————
+                    canon = self.original_map.get(existing_id, existing_id)
+                    self.original_map[raw_id] = canon
+                    #if self.config['debug']:
+                    #    print(f"[MAP CANÓNICO] raw_id {raw_id} mapeado a canonical {canon}")
+
+                    # reset frames, logging habitual…
+                    self.person_states[existing_id]['frames_missing'] = 0
+                    self.active_reassignments.add(existing_id)
+                    self.id_history[raw_id] = {
+                        'original_id': existing_id,
+                        'reassigned_at_frame': current_time,
+                        'region': current_region
+                    }
+                    track_id = existing_id
+                else:
+                    track_id = raw_id
+
+                # 3) Si está fuera de todas las regiones
                 if current_region is None:
-                    # Si una deteccion esta fuera de las regiones se agrega a new_detections con region=None
                     self.update_approaching_tracks(track_id, center, current_time)
                     new_detections.append({
                         'track_id': track_id,
@@ -441,39 +385,35 @@ class PersonCounter:
                         'box': xyxy
                     })
 
+                # 4) Si está dentro de una región válida
                 else:
-                    # Si esta dentro de una region valida
+                    # Track nuevo dentro de región
                     if track_id not in self.person_states:
-                        # Si el track es nuevo
-                        existing_id = self.find_existing_id(current_time, track_id, center)
-                        all_current_tracks.add(existing_id)
-                        self.active_original_id.add(existing_id)
-
-                        if existing_id is not None:
-                            # Si reasigna original_id -> resetea frames perdidos
-                            self.person_states[existing_id]['frames_missing'] = 0
-                            if self.config['debug']:
-                                print(f"Reasignando ID {existing_id} a nueva detección {track_id}")
-
-                            self.active_reassignments.add(existing_id)
+                        #if self.config['debug']:
+                        #    print(f"[CREACIÓN] Nuevo ID {track_id} en R{current_region}")
+                        # Intentar reasignar dentro de región (llama de nuevo por si alguien entró directamente)
+                        existing2 = self.find_existing_id(current_time, track_id, center)
+                        if existing2 is not None and existing2 != track_id:
+                            #if self.config['debug']:
+                            #    print(f"[REASIGNACIÓN] {track_id} → {existing2}")
+                            self.person_states[existing2]['frames_missing'] = 0
+                            self.active_reassignments.add(existing2)
                             self.id_history[track_id] = {
-                                'original_id': existing_id,
-                                'reassigned_at_frame': current_time,  # Cambiado
+                                'original_id': existing2,
+                                'reassigned_at_frame': current_time,
                                 'region': current_region
                             }
-
-                            # Si original_id es valido -> Se copia su data al nuevo track_id
-                            if existing_id in self.person_states:
-                                self.person_states[track_id] = self.person_states[existing_id].copy()
-                                self.person_states[track_id].update({
-                                    'original_id': existing_id,
-                                    'reassigned_from': track_id,
-                                    'last_center': center,
-                                    'frames_missing': 0,
-                                    'last_seen_time': current_time,  # Cambiado
-                                    'entry_time': self.person_states[existing_id]['entry_time'], # New
-                                    'region': current_region, # New
-                                })
+                            # copiar estado al nuevo track
+                            self.person_states[track_id] = self.person_states[existing2].copy()
+                            self.person_states[track_id].update({
+                                'original_id': existing2,
+                                'reassigned_from': track_id,
+                                'last_center': center,
+                                'frames_missing': 0,
+                                'last_seen_time': current_time,
+                                'entry_time': self.person_states[existing2]['entry_time'],
+                                'region': current_region,
+                            })
 
                     new_detections.append({
                         'track_id': track_id,
@@ -482,79 +422,79 @@ class PersonCounter:
                         'box': xyxy
                     })
 
+                # 5) Marcar que vimos este track en el frame actual
                 all_current_tracks.add(track_id)
-            
-        for tid in self.current_frame_tracks:
-            if self.person_states[tid]['original_id'] in self.current_frame_tracks:
-                existing_id = self.find_existing_id(current_time, track_id, center)
+                self.current_frame_tracks.add(track_id)
 
-                self.person_states[tid].update({'original_id': None,})
+        # 6) Evitar duplicados: si dos raw_ids comparten un mismo original_id,
+        #    anula el original_id del segundo para desambiguar
+        for tid in self.current_frame_tracks:
+            orig = self.person_states.get(tid, {}).get('original_id')
+            if orig is not None and orig in self.current_frame_tracks and orig != tid:
+                #if self.config['debug']:
+                #    print(f"[DUPLICADO] {tid} y {orig} activos juntos: anulando original de {tid}")
+                self.person_states[tid]['original_id'] = None
 
         self.current_frame_tracks.clear()
 
-        # Limpiar reasignaciones inactivas
+        # 7) Limpiar reasignaciones inactivas
         self.active_reassignments = {
-            track_id for track_id in self.active_reassignments
-            if any(state['original_id'] == track_id for state in self.person_states.values())
+            tid for tid in self.active_reassignments
+            if any(st['original_id'] == tid for st in self.person_states.values())
         }
 
-        # Procesar detecciones
-        for detection in new_detections:
-            track_id = detection['track_id']
-            center = detection['center']
-            region = detection['region']
+        # 8) Procesar cada nueva detección y manejar transiciones
+        for det in new_detections:
+            tid = det['track_id']
+            ctr = det['center']
+            reg = det['region']
 
-            prev_state = self.person_states[track_id]
-            prev_region = prev_state['region']
-            prev_time = prev_state['last_seen_time']
+            prev = self.person_states[tid]
+            prev_reg = prev['region']
+            prev_time = prev['last_seen_time']
 
-            # Calcular velocidad
+            # Velocidad
             if prev_time is not None:
-                time_diff = current_time - prev_time
-                velocity = self.calculate_velocity(prev_state['last_center'], center, time_diff)
+                dt = current_time - prev_time
+                vel = self.calculate_velocity(prev['last_center'], ctr, dt)
             else:
-                velocity = (0, 0)
+                vel = (0, 0)
 
-            # Actualizar estado y si no existe, lo crea
-            self.person_states[track_id].update({
-                'region': region,
-                'last_center': center,
+            # Actualizar estado
+            self.person_states[tid].update({
+                'region': reg,
+                'last_center': ctr,
                 'frames_missing': 0,
-                'last_seen_time': current_time,  # Cambiado
-                'velocity': velocity,
-                'trajectory': prev_state['trajectory'][-9:] + [center] if prev_state['trajectory'] else [center]
+                'last_seen_time': current_time,
+                'velocity': vel,
+                'trajectory': prev['trajectory'][-9:] + [ctr] if prev['trajectory'] else [ctr]
             })
 
-            if prev_region is None:
-                prev_region = self.person_states[prev_state['original_id']]['region']
+            # Inicializar entry_time
+            if prev['entry_time'] is None:
+                self.person_states[tid]['entry_time'] = current_time
 
-            # Inicializar tiempo de entrada
-            if prev_state['entry_time'] is None:
-                self.person_states[track_id]['entry_time'] = current_time  # Cambiado
+            # Transición de regiones
+            if prev_reg != reg:
+                self.handle_transition(tid, prev_reg, reg, current_time, camera_id)
 
-            # Manejar transición
-            if prev_region != region:
-                self.handle_transition(track_id, prev_region, region, current_time, camera_id)
-
-        # Actualizar tracks perdidos
-        for track_id in list(self.person_states.keys()):
-            if track_id not in all_current_tracks:
-                data = self.person_states[track_id]
-                data['frames_missing'] += 1
-
-                if data['frames_missing'] > self.config['max_frames_missing']:
-                    if data['region'] is not None and data['entry_time'] is not None:
-                        time_spent = current_time - data['entry_time']
-                        data['time_in_regions'][data['region']] += time_spent
-
-                        # Actualizar tiempos persistentes
-                        original_id = self.get_original_id(track_id)
-                        self.persistent_times[original_id][data['region']] += time_spent
-
-                    del self.person_states[track_id]
+        # 9) Actualizar tracks perdidos (sin borrarlos)
+        for tid in list(self.person_states.keys()):
+            if tid not in all_current_tracks:
+                st = self.person_states[tid]
+                st['frames_missing'] += 1
+                if st['frames_missing'] > self.config['max_frames_missing']:
+                    #if self.config['debug']:
+                    #    print(f"[RETENIDO] Track {tid} timeout; sigue en memoria with frames_missing={st['frames_missing']}")
+                    if st['region'] is not None and st['entry_time'] is not None:
+                        spent = current_time - st['entry_time']
+                        st['time_in_regions'][st['region']] += spent
+                        orig = self.get_original_id(tid)
+                        self.persistent_times[orig][st['region']] += spent
+                    # ya no hacemos del self.person_states[tid]
 
         return self.transition_counts, self.get_average_times(), self.id_history
-    
+
     def get_average_times(self):
         """Calcula el tiempo promedio de permanencia en cada región"""
         total_times = defaultdict(float)
