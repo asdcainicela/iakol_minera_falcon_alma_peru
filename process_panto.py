@@ -107,24 +107,28 @@ class PersonCounter:
 
     def get_original_id(self, track_id):
         """
-        Obtiene el ID original siguiendo la cadena de reasignaciones
+        Retorna el ID canónico (el menor) de toda la cadena de reasignaciones.
         """
-        visited = set()
-        current_id = track_id
+        ids = {track_id}
+        current = track_id
 
-        while current_id is not None and current_id not in visited:
-            visited.add(current_id)
-            if current_id in self.person_states:
-                original = self.person_states[current_id].get('original_id')
-                if original is None:
-                    break
-                current_id = original
-            elif current_id in self.id_history:
-                current_id = self.id_history[current_id].get('original_id')
+        # Explorar id_history
+        while True:
+            if current in self.id_history:
+                parent = self.id_history[current]['original_id']
+            elif current in self.person_states and self.person_states[current].get('original_id') is not None:
+                parent = self.person_states[current]['original_id']
             else:
                 break
 
-        return current_id
+            # Evitar bucles infinitos
+            if parent in ids:
+                break
+            ids.add(parent)
+            current = parent
+
+        # Devolver siempre el menor ID de todos los vistos
+        return min(ids)
 
     def is_id_active(self, track_id, exclude_id=None):
         """
@@ -170,7 +174,6 @@ class PersonCounter:
             # if self.config['debug']:
             #     print(f"Track {track_id} acercándose a región {closest_region}, distancia: {min_distance:.1f}")
  
-
     def find_existing_id(self, current_time, new_track_id, new_center):
         """
         Busca un ID existente que podría corresponder a esta nueva detección,
