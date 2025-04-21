@@ -20,7 +20,7 @@ class PersonCounter:
         self.api_url = "https://fn-va-panto.azurewebsites.net/api/camera-region-data"
 
         default_config = {
-            'max_frames_missing': 360,
+            'max_frames_missing': 720, #antes era 360
             'approaching_threshold': 500,
             'track_memory_time': 30.0,
             'min_entry_distance': 50,
@@ -174,6 +174,7 @@ class PersonCounter:
         """
         Busca un ID existente que podría corresponder a esta nueva detección
         """
+        
         potential_tracks = [] # Tracks que tienen menos de 720 frames perdidos y con track_id y original_id diferente de new_track_id
         current_region = self.get_region(new_center)
         all_tracks = []  # Fallback, solo tracks con track_id y original_id diferente de new_track_id
@@ -285,6 +286,7 @@ class PersonCounter:
                     return track['original_id']
 
         # Último recurso: usar el track válido más cercano
+        """ 
         if all_tracks:
             all_tracks.sort(key=lambda x: x['real_distance'])
             for track in all_tracks:
@@ -295,6 +297,7 @@ class PersonCounter:
                         print(f"  Distancia: {track['real_distance']:.1f}")
                         print(f"  Region: {track['region']} -> {current_region}")
                     return track['original_id']
+                    """
   
         return None
 
@@ -407,6 +410,10 @@ class PersonCounter:
                 current_region = self.get_region(center)
 
                 if current_region is None:
+                    existing_id = self.find_existing_id(current_time, track_id, center)
+                    if existing_id is not None:
+                        if self.config['debug']:
+                            print(f"[REASIGNACIÓN fuera de región] {track_id} → {existing_id}")
                     # Si una deteccion esta fuera de las regiones se agrega a new_detections con region=None
                     self.update_approaching_tracks(track_id, center, current_time)
                     new_detections.append({
@@ -414,7 +421,7 @@ class PersonCounter:
                         'center': center,
                         'region': None,
                         'box': xyxy
-                    })
+                    })# 
 
                 else:
                     # Si esta dentro de una region valida
