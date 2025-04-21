@@ -16,13 +16,12 @@ class PersonCounter:
         """
         Inicializa el contador de personas
         """
-        self.polygons = polygons # polygons
+        self.polygons = polygons
         self.api_url = "https://fn-va-panto.azurewebsites.net/api/camera-region-data"
 
-        #config initial para 
         default_config = {
             'max_frames_missing': 360,
-            'approaching_threshold': 500, ##500  anterior
+            'approaching_threshold': 500,
             'track_memory_time': 30.0,
             'min_entry_distance': 50,
             'debug': True
@@ -107,28 +106,25 @@ class PersonCounter:
         )
 
     def get_original_id(self, track_id):
+        """
+        Obtiene el ID original siguiendo la cadena de reasignaciones
+        """
         visited = set()
         current_id = track_id
-        last_valid = current_id
 
         while current_id is not None and current_id not in visited:
             visited.add(current_id)
-
             if current_id in self.person_states:
                 original = self.person_states[current_id].get('original_id')
+                if original is None:
+                    break
+                current_id = original
             elif current_id in self.id_history:
-                original = self.id_history[current_id].get('original_id')
+                current_id = self.id_history[current_id].get('original_id')
             else:
                 break
 
-            if original is None:
-                break
-
-            last_valid = original
-            current_id = original
-
-        return last_valid
-
+        return current_id
 
     def is_id_active(self, track_id, exclude_id=None):
         """
@@ -173,14 +169,6 @@ class PersonCounter:
 
             # if self.config['debug']:
             #     print(f"Track {track_id} acercándose a región {closest_region}, distancia: {min_distance:.1f}")
-
-    def is_original_id_in_use(self, original_id, exclude_id=None):
-        for tid, state in self.person_states.items():
-            if tid == exclude_id:
-                continue
-            if state.get('original_id') == original_id and state['frames_missing'] == 0:
-                return True
-        return False
 
     def find_existing_id(self, current_time, new_track_id, new_center):
         """
@@ -271,8 +259,7 @@ class PersonCounter:
             max_allowed_distance = self.config['approaching_threshold'] * 2
 
             for track in potential_tracks:
-#----------------------------------------------------------------
-                if (track['original_id'] == new_track_id) or ((track['current_id'] == new_track_id) and (track['frames_missing'] == 0)):
+                if track['original_id'] == new_track_id or track['current_id'] == new_track_id and track['frames_missing'] == 0:
                     continue
 
                 current_max_distance = max_allowed_distance
@@ -281,30 +268,17 @@ class PersonCounter:
 
                 # Se descarta el posible track si supera la distancia maxima umbral
                 if track['real_distance'] > current_max_distance:
-                    if self.config['debug']: #----------- PARA EL DEBUG
-                        print(f"[DEBUG]  Rechazado ID {track['original_id']} como candidato. Distancia: {track['real_distance']:.1f}, umbral: {current_max_distance:.1f}") ## [DEBUG] EXTRA
                     if self.config['debug']:
                         print(f"  Descartando ID {track['original_id']}: distancia {track['real_distance']:.1f} > {current_max_distance:.1f}")
                     continue
-                #------------------------------------------------------------------              
+                
                 # Si el track o relacionados estan inactivos (frames_missing != 0)
                 if not self.is_id_active(track['original_id'], exclude_id=new_track_id):
-                    # Verificar que el original_id no esté ya siendo usado activamente por otro track
-                    if self.is_original_id_in_use(track['original_id'], exclude_id=new_track_id):
-                        if self.config['debug']:
-                            print(f"[DEBUG]    No se reasigna {new_track_id} a {track['original_id']} porque ya está activo con otro ID")
-                        continue
-                    """if any(tid != new_track_id and state.get('original_id') == track['original_id'] and state['frames_missing'] == 0
-                        for tid, state in self.person_states.items()):
-                        if self.config['debug']:
-                            print(f"[DEBUG]    No se reasigna {new_track_id} a {track['original_id']} porque ya está activo con otro ID") ## new [DEBUG]
-                        continue"""
-                     
                     self.person_states[track['original_id']]['frames_missing'] = 0
                     if self.config['debug']:
-                        print(f"[DEBUG]  Reasignado ID {track['original_id']} para nueva detección {new_track_id}") #fixed [DEBUG] name
-                        print(f"        Distancia: {track['real_distance']:.1f}, Región: {track['region']} -> {current_region}") #fixed [DEBUG ] name
-                        print(f"        Frames perdidos: {track['frames_missing']}, Última vez visto: {track['last_seen_time']:.1f}") #fixed [DEBUG ] name
+                        print(f"Encontrado ID {track['original_id']} para nueva detección {new_track_id}")
+                        print(f"  Distancia real: {track['real_distance']:.1f}")
+                        print(f"  Region: {track['region']} -> {current_region}")
                     return track['original_id']
 
         # Último recurso: usar el track válido más cercano
@@ -420,21 +394,11 @@ class PersonCounter:
         if results[0].boxes is not None:
             boxes = results[0].boxes
             for box in boxes:
-                """
                 if not hasattr(box, 'id'):
                     continue
                 if box.id is None:
                     continue
                 track_id = int(box.id.item())
-                """
-                #fixed by -------------------------------------
-                if not hasattr(box, 'id') or box.id is None:
-                    continue
-                try:
-                    track_id = int(box.id.item())
-                except Exception:
-                    continue 
-
                 xyxy = box.xyxy[0].cpu().numpy()
                 center = self.calculate_center(xyxy)
                 current_region = self.get_region(center)
@@ -453,13 +417,7 @@ class PersonCounter:
                     # Si esta dentro de una region valida
                     if track_id not in self.person_states:
                         # Si el track es nuevo
-                        if self.config['debug']:
-                            print(f"[DEBUG]  Nuevo track detectado: ID {track_id}, centro: {center}, región: {current_region}") ## [DEBUG]] extra------------
                         existing_id = self.find_existing_id(current_time, track_id, center)
-
-                        if self.config['debug']:
-                            print(f"[DEBUG]   Reasignación detectada: ID nuevo {track_id} -> ID existente {existing_id}") #------- [DEBUG] extra 
-
 
                         if existing_id is not None:
                             # Si reasigna original_id -> resetea frames perdidos
@@ -552,10 +510,6 @@ class PersonCounter:
 
         # Actualizar tracks perdidos
         for track_id in list(self.person_states.keys()):
-            #------- new code
-            if track_id is None:
-                continue  # Evita errores por IDs inválidos
-            #-------- new code
             if track_id not in current_tracks:
                 data = self.person_states[track_id]
                 data['frames_missing'] += 1
@@ -568,10 +522,8 @@ class PersonCounter:
                         # Actualizar tiempos persistentes
                         original_id = self.get_original_id(track_id)
                         self.persistent_times[original_id][data['region']] += time_spent
-                    if self.config['debug']: # Condicional para el debug
-                        print(f"[DEBUG]    Eliminando track {track_id} por inactividad (frames perdidos: {data['frames_missing']})") # [DEBUG]
 
-                    del self.person_states[track_id] # eliminó del -
+                    del self.person_states[track_id]
 
         return self.transition_counts, self.get_average_times(), self.id_history
 
@@ -838,52 +790,49 @@ def process_video(input_path, output_path, model_path, polygons, camera_id, show
         if not ret:
             print("Error al recibir frame. Saliendo...")
             break
-        
-        try: 
-            results = model.track(frame, persist=True, classes=[0], conf=0.5, verbose=False, half=True)
 
-            # Procesar resultados
-            transitions, avg_times, id_history = counter.process_frame(results, start_time, camera_id)
+        results = model.track(frame, persist=True, classes=[0], conf=0.5, verbose=False, half=True)
 
-            if show_drawings:
-                # Dibujar información de regiones y tracking
-                draw_region_info(frame, polygons, counter, start_time)
+        # Procesar resultados
+        transitions, avg_times, id_history = counter.process_frame(results, start_time, camera_id)
 
-                # Dibujar información de tracking para cada persona
-                if results[0].boxes is not None:
-                    boxes = results[0].boxes
-                    for box in boxes:
-                        if not hasattr(box, 'id'):
-                            continue
-                        if box.id is None:
-                            continue
+        if show_drawings:
+            # Dibujar información de regiones y tracking
+            draw_region_info(frame, polygons, counter, start_time)
 
-                        track_id = int(box.id.item())
-                        xyxy = box.xyxy[0].cpu().numpy()
-                        conf = float(box.conf.item())
-                        region = counter.get_region(counter.calculate_center(xyxy))
-                        person_state = counter.person_states.get(track_id, {})
+            # Dibujar información de tracking para cada persona
+            if results[0].boxes is not None:
+                boxes = results[0].boxes
+                for box in boxes:
+                    if not hasattr(box, 'id'):
+                        continue
+                    if box.id is None:
+                        continue
 
-                        draw_tracking_info(frame, xyxy, track_id, region, conf, person_state, counter, start_time)
+                    track_id = int(box.id.item())
+                    xyxy = box.xyxy[0].cpu().numpy()
+                    conf = float(box.conf.item())
+                    region = counter.get_region(counter.calculate_center(xyxy))
+                    person_state = counter.person_states.get(track_id, {})
 
-            if save_frame:
-                out.write(frame)
+                    draw_tracking_info(frame, xyxy, track_id, region, conf, person_state, counter, start_time)
 
-            if show_display:
-                frame = cv2.resize(frame, (1280, 720))
-                cv2.imshow("RTSP Stream", frame)
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord('q'):
-                    break
-                elif key == ord('p'):
-                    cv2.waitKey(0)
+        if save_frame:
+            out.write(frame)
 
-            current_frame += 1
-            end_time = time.time()
-            fps = 1/(end_time-start_time)
-            # print(f"FPS del procesamiento: {fps:.2f}, {len(results[0].boxes)} personas en el frame", flush=True)
-        except Exception as e:
-            print(f"Error detectado: {e}")
+        if show_display:
+            frame = cv2.resize(frame, (1280, 720))
+            cv2.imshow("RTSP Stream", frame)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+            elif key == ord('p'):
+                cv2.waitKey(0)
+
+        current_frame += 1
+        end_time = time.time()
+        fps = 1/(end_time-start_time)
+        # print(f"FPS del procesamiento: {fps:.2f}, {len(results[0].boxes)} personas en el frame", flush=True)
 
     cap.release()
     if save_frame:
@@ -936,4 +885,3 @@ if __name__ == "__main__":
     print("\nHistorial de reasignaciones de IDs:")
     for track_id, history in sorted(id_history.items()):
         print(f"ID {track_id} -> ID original {history['original_id']}")
-
