@@ -520,13 +520,13 @@ class PersonCounter:
         # Actualizar tracks perdidos
         for track_id in list(self.person_states.keys()):
             if track_id not in current_tracks:
-                #if self.config['debug']: 
-                 #   print(f"[PERDIDO] Track {track_id} no detectado en este frame. Frames perdidos: {data['frames_missing'] + 1}")
-
+                 
                 data = self.person_states[track_id]
                 data['frames_missing'] += 1
 
                 if data['frames_missing'] > self.config['max_frames_missing']:
+                    #if self.config['debug']:
+                     #   print(f"[RETENIDO] Track {track_id} ha superado el umbral de frames perdidos, pero se conservará.")
                     #if self.config['debug']:
                      #   print(f"[ELIMINADO] Track {track_id} eliminado por inactividad. Región: {data['region']}, Tiempo desde entrada: {current_time - data['entry_time']:.1f}s")
 
@@ -538,7 +538,7 @@ class PersonCounter:
                         original_id = self.get_original_id(track_id)
                         self.persistent_times[original_id][data['region']] += time_spent
 
-                    del self.person_states[track_id]
+                    del self.person_states[track_id] # eliminar el sel.peerson[], trackid
 
         return self.transition_counts, self.get_average_times(), self.id_history
 
