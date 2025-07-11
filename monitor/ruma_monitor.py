@@ -12,9 +12,10 @@ from ultralytics import YOLO
 from collections import defaultdict, deque
 
 #--------- import de la clase ruma data -------#
-from ruma_data import RumaData
+from monitor.ruma_data import RumaData
 from utils.geometry import is_point_in_polygon, calculate_intersection
-
+from alerts.alert_manager import save_alert
+from utils.paths import setup_alerts_folder
 #-----------#
 
 class RumaMonitor:
@@ -55,33 +56,11 @@ class RumaMonitor:
         self.TEXT_COLOR_RED = (0, 0, 255)
 
         # Crear carpeta de alertas
-        self.setup_alerts_folder()
+        self.setup_alerts_folder =setup_alerts_folder()
 
         #
         self.ruma_summary = {}
         self.new_ruma_created = None  #  marca si hay nueva ruma
-
-    def send_metadata(self, metadata):
-        #print(f"Metadata a enviar: {metadata}")
-        print(f"Preparando Metadata a enviar")
-        try:
-            response = requests.post(self.api_url, json=metadata)
-            if response.status_code == 200:
-                print("Metadata enviada con éxito.")
-            else:
-                print(f"Error al enviar metadata: {response.status_code}, {response.text}")
-        except Exception as e:
-            print(f"Error al conectar con la API: {e}")
-
-    def setup_alerts_folder(self):
-        """Crea la estructura de carpetas para alertas"""
-        self.alerts_base_path = Path("alerts_save")
-        self.alerts_base_path.mkdir(exist_ok=True)
-
-        today = datetime.now().strftime("%Y-%m-%d")
-        self.today_alerts_path = self.alerts_base_path / today
-        self.today_alerts_path.mkdir(exist_ok=True)
- 
     
     def put_text_with_background(self, img, text, position, font=cv2.FONT_HERSHEY_SIMPLEX,
                                 font_scale=0.4, color=(255,255,255), thickness=1,
@@ -178,116 +157,6 @@ class RumaMonitor:
         if ruma.percentage <= 10:
             ruma.is_active = False
             print(f"Ruma {ruma_id} eliminada (porcentaje: {ruma.percentage:.1f}%)")
-
-    def save_alert(self, alert_type, frame_with_drawings, frame_count, fps):
-        #Guarda una alerta en JSON con imagen base64
-        timestamp = datetime.now()
-
-        # Crear carpeta de la fecha si no existe
-        date_folder = self.alerts_base_path / timestamp.strftime("%Y-%m-%d")
-        date_folder.mkdir(exist_ok=True)
-
-        # Codificar imagen a base64
-        _, buffer = cv2.imencode('.jpg', frame_with_drawings)
-        frame_base64 = base64.b64encode(buffer).decode('utf-8')
-
-        # Construir metadata final
-        alert_data = {
-            "cameraSN": self.camera_sn,
-            "alert_type": alert_type,
-            "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-            "frame": frame_base64,
-            #"id":id,
-            #"percent":percent,
-            #"coords": coords,
-            #"rad": rad,
-            "enterprise": 'alma'# 'falcon crest' #self.enterprise
-        }
-        if hasattr(self, 'send_metadata'):
-              self.send_metadata(alert_data)
-
-        # Nombre del archivo (por ejemplo para auditoría local)
-        base_filename = f"{timestamp.strftime('%H-%M-%S')}_{alert_type}_{frame_count}"
-        json_filename = f"{base_filename}.json"
-
-        # Guardar JSON
-        json_path = date_folder / json_filename
-        with open(json_path, 'w') as f:
-            json.dump(alert_data, f, indent=2)
-
-        #print(f"Alerta guardada: {alert_type} - {timestamp.strftime('%H:%M:%S')}")
-
-    def save_alert2(self, alert_type, frame_with_drawings, frame_count, fps):
-        """Guarda una alerta en JSON y el frame correspondiente"""
-        timestamp = datetime.now()
-
-        # Crear carpeta de la fecha si no existe
-        date_folder = self.alerts_base_path / f"{timestamp.strftime('%Y-%m-%d')}_v2"
-        date_folder.mkdir(exist_ok=True)
-
-        # Calcular tiempo del video
-        video_time_seconds = frame_count / fps
-
-        # Metadata de la alertass
-        alert_data = {
-            "cameraSN": self.camera_sn,
-            "alert_type": alert_type,
-            "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-            "video_time_seconds": video_time_seconds,
-            "frame_number": frame_count
-        }
-
-        # Nombres de archivos
-        base_filename = f"{timestamp.strftime('%H-%M-%S')}_{alert_type}_{frame_count}"
-        json_filename = f"{base_filename}.json"
-        image_filename = f"{base_filename}.jpg"
-
-        # Guardar JSON
-        json_path = date_folder / json_filename
-        with open(json_path, 'w') as f:
-            json.dump(alert_data, f, indent=2)
-
-        # Guardar imagen del frame con dibujo
-        image_path = date_folder / image_filename
-        cv2.imwrite(str(image_path), frame_with_drawings)
-
-        # --- Guardar imagen resumen si hay nueva ruma ---
-        if self.new_ruma_created is not None:
-            ruma_id, frame_shape = self.new_ruma_created
-            summary_image_filename = f"{timestamp.strftime('%H-%M-%S')}_nueva_ruma_{ruma_id}_ruma_summary.jpg"
-            summary_image_path = date_folder / summary_image_filename
-            self.save_ruma_summary_image(frame_shape, summary_image_path)
-            print(f"Imagen resumen de ruma {ruma_id} guardada.")
-            self.new_ruma_created = None  # Solo una vez
-
-        print(f"Alerta guardada: {alert_type} - {timestamp.strftime('%H:%M:%S')}")
-
-    def save_ruma_summary_image(self, frame_shape, save_path):
-        """Genera una imagen con fondo blanco y dibuja los centroides y radios de rumas"""
-        summary_image = np.ones(frame_shape, dtype=np.uint8) * 255  # fondo blanco
-
-        # Dibujar polígono de zona de detección
-        if hasattr(self, 'detection_zone') and self.detection_zone is not None:
-            pts = self.detection_zone.reshape((-1, 1, 2))
-            cv2.polylines(summary_image, [pts], isClosed=True, color=(200, 200, 200), thickness=2)
-
-        for ruma_id, info in self.ruma_summary.items():
-            centroid = info['centroid']
-            radius = int(info['radius'])
-
-            # Dibujar el círculo representando la ruma
-            cv2.circle(summary_image, centroid, radius, (0, 0, 255), 2)  # rojo
-
-            # Dibujar centroide como punto
-            cv2.circle(summary_image, centroid, 3, (0, 0, 0), -1)  # negro
-
-            # Dibujar texto
-            label_pos = (centroid[0] + 10, centroid[1] - 10)
-            cv2.putText(summary_image, f"R{ruma_id}", label_pos, cv2.FONT_HERSHEY_SIMPLEX,
-                        0.6, (0, 0, 0), 1)
-
-        cv2.imwrite(str(save_path), summary_image)
-        print(f"Imagen de resumen de rumas guardada en: {save_path}")
 
     def process_detections(self, frame, frame_count):
         """Procesa las detecciones de personas y vehículos"""
@@ -532,11 +401,27 @@ class RumaMonitor:
                 alert_names = {
                     'movement': 'movimiento_zona',
                     'interaction': 'interaccion_rumas',
-                    'variation': 'variacion_rumas',
-                    'new': 'nueva_ruma'
+                    'variation': 'variacion_rumas'#,
+                    #'new': 'nueva_ruma'
                 }
                 #self.save_alert(alert_names[alert_type], frame_with_drawings, frame_count, fps)
-                self.save_alert2(alert_names[alert_type], frame_with_drawings, frame_count, fps)
+                #self.save_alert2(alert_names[alert_type], frame_with_drawings, frame_count, fps)
+                save_alert(
+                    alert_type=alert_names[alert_type],
+                    frame=frame_with_drawings,
+                    frame_count=frame_count,
+                    fps=fps,
+                    camera_sn=self.camera_sn,
+                    enterprise='alma',
+                    api_url=self.api_url,
+                    send=False,
+                    save=True,
+                    ruma_summary=self.ruma_summary ,
+                    frame_shape=frame.shape,
+                    detection_zone = self.detection_zone
+                )
+
+
 
         # Actualizar estados
         self.object_in_zone = object_in_zone

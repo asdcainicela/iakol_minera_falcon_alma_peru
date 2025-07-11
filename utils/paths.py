@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from pathlib import Path
 
 def generar_ruta_salida(video_path):
     """
@@ -20,6 +21,15 @@ def generar_ruta_salida(video_path):
 
     output_path = os.path.join(output_folder, output_filename)
     return output_path
+
+def setup_alerts_folder():
+        """Crea la estructura de carpetas para alertas"""
+        alerts_base_path = Path("alerts_save")
+        alerts_base_path.mkdir(exist_ok=True)
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        today_alerts_path = alerts_base_path / today
+        today_alerts_path.mkdir(exist_ok=True)
 
 if __name__ == "__main__":
     video_path = 'videos/video_cam2.mp4'
