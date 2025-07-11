@@ -1,1 +1,4 @@
 *.mp4
+*.jpg
+*.json
+*_pycache_
