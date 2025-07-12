@@ -1,37 +1,48 @@
-import os
-from datetime import datetime
 from pathlib import Path
+from datetime import datetime
 
-def generar_ruta_salida(video_path):
+def setup_alerts_folder(base_path="alerts_save") -> Path:
     """
-    Genera una ruta de salida para un video con el formato:
-    misma carpeta que el video original, en una subcarpeta 'output/{nombre_input}/',
-    y nombre: output_{nombre_input}_{fecha_hora}.mp4
+    Crea la carpeta base para guardar alertas organizada por fecha.
+    
+    Returns:
+        Path: Ruta de la carpeta del día actual.
     """
-    folder, filename = os.path.split(video_path)
-    name, ext = os.path.splitext(filename)
+    base = Path(base_path)
+    base.mkdir(parents=True, exist_ok=True)
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    today_folder = base / today
+    today_folder.mkdir(exist_ok=True)
+
+    return today_folder
+
+def generar_output_video(video_path: str) -> Path:
+    """
+    Genera una ruta de salida para un video procesado.
+
+    Args:
+        video_path (str): Ruta al video de entrada.
+
+    Returns:
+        Path: Ruta completa para guardar el video de salida.
+    """
+    video = Path(video_path)
+    name = video.stem
     fecha_hora = datetime.now().strftime('%Y%m%d_%H%M')
-    output_filename = f'output_{name}_{fecha_hora}.mp4'
+    output_filename = f"output_{name}_{fecha_hora}.mp4"
 
-    # Carpeta de salida: misma carpeta + subcarpeta 'output/{nombre_input}'
-    output_folder = os.path.join(folder, 'output', name)
+    output_folder = video.parent / "output" / name
+    output_folder.mkdir(parents=True, exist_ok=True)
 
-    # Crear carpeta si no existe
-    os.makedirs(output_folder, exist_ok=True)
-
-    output_path = os.path.join(output_folder, output_filename)
-    return output_path
-
-def setup_alerts_folder():
-        """Crea la estructura de carpetas para alertas"""
-        alerts_base_path = Path("alerts_save")
-        alerts_base_path.mkdir(exist_ok=True)
-
-        today = datetime.now().strftime("%Y-%m-%d")
-        today_alerts_path = alerts_base_path / today
-        today_alerts_path.mkdir(exist_ok=True)
+    return output_folder / output_filename
 
 if __name__ == "__main__":
+    # Crear carpeta de alertas
+    alerts_today = setup_alerts_folder()
+    print(f"Carpeta de alertas creada en: {alerts_today}")
+
+    # Ruta de salida para un video
     video_path = 'videos/video_cam2.mp4'
-    output_path = generar_ruta_salida(video_path)
-    print("Ruta generada:", output_path)
+    output_path = generar_output_video(video_path)
+    print(f"Ruta generada para guardar el video procesado: {output_path}")
