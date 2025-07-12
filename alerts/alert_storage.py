@@ -14,7 +14,7 @@ def save_alert_local(
     ruma_summary=None,
     frame_shape=None,
     detection_zone=None
-):
+    ):
     """Guarda localmente una alerta con imagen y metadatos"""
     timestamp = datetime.now()
     date_str = timestamp.strftime("%Y-%m-%d")
@@ -65,7 +65,7 @@ def save_ruma_summary_image(
     timestamp,
     frame_count,
     detection_zone=None
-):
+    ):
     """Guarda imagen resumen de rumas (puntos y radios)"""
     summary_image = np.ones(frame_shape, dtype=np.uint8) * 255  # fondo blanco
 
