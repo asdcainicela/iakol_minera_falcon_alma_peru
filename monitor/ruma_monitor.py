@@ -16,6 +16,10 @@ from monitor.ruma_data import RumaData
 from utils.geometry import is_point_in_polygon, calculate_intersection
 from alerts.alert_manager import save_alert
 from utils.paths import setup_alerts_folder
+from utils.draw import put_text_with_background, draw_zone_and_status
+
+from monitor.ruma_tracker import RumaTracker
+
 #-----------#
 
 class RumaMonitor:
@@ -37,9 +41,7 @@ class RumaMonitor:
         self.enterprise = None # Added enterprise attribute
 
         # Tracking de rumas
-        self.rumas = {}  # ruma_id: RumaData
-        self.next_ruma_id = 1
-        self.candidate_rumas = {}  # Para validar nuevas rumas por 10 frames
+        self.tracker = RumaTracker()
 
         # Estados de alertas
         self.object_in_zone = False
@@ -57,106 +59,6 @@ class RumaMonitor:
 
         # Crear carpeta de alertas
         self.setup_alerts_folder =setup_alerts_folder()
-
-        #
-        self.ruma_summary = {}
-        self.new_ruma_created = None  #  marca si hay nueva ruma
-    
-    def put_text_with_background(self, img, text, position, font=cv2.FONT_HERSHEY_SIMPLEX,
-                                font_scale=0.4, color=(255,255,255), thickness=1,
-                                bg_color=(0,0,0), bg_alpha=0.6):
-        """Coloca texto con fondo semitransparente para mejor legibilidad"""
-        (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
-
-        x, y = position
-        bg_img = img.copy()
-        padding = 5
-
-        cv2.rectangle(bg_img, (x-padding, y-text_height-padding),
-                     (x+text_width+padding, y+padding), bg_color, -1)
-
-        overlay = cv2.addWeighted(bg_img, bg_alpha, img, 1-bg_alpha, 0)
-        cv2.putText(overlay, text, (x, y), font, font_scale, color, thickness)
-
-        return overlay
-
-    def find_closest_ruma(self, centroid, max_distance=50): # max_distance=100
-        """Encuentra la ruma más cercana a un centroide dado"""
-        min_distance = float('inf')
-        closest_ruma = None
-
-        for ruma_id, ruma in self.rumas.items():
-            if not ruma.is_active:
-                continue
-
-            dist = ((centroid[0] - ruma.centroid[0])**2 +
-                   (centroid[1] - ruma.centroid[1])**2)**0.5
-
-            if dist < min_distance and dist < max_distance:
-                min_distance = dist
-                closest_ruma = ruma_id
-
-        return closest_ruma, min_distance
-
-    def add_candidate_ruma(self, mask, centroid, frame_count, frame_shape):
-      candidate_key = f"candidate_{centroid[0]}_{centroid[1]}"
-
-      if candidate_key not in self.candidate_rumas:
-          self.candidate_rumas[candidate_key] = {
-              'mask': mask,
-              'centroid': centroid,
-              'area': cv2.contourArea(mask.astype(np.int32)),
-              'first_frame': frame_count,
-              'confirmations': 1
-          }
-      else:
-          self.candidate_rumas[candidate_key]['confirmations'] += 1
-
-          if self.candidate_rumas[candidate_key]['confirmations'] >= 6:
-              ruma_id = self.next_ruma_id
-              area = cv2.contourArea(mask.astype(np.int32))
-              # usamos RumaData del import ruma_data.py
-              # new_ruma = self.RumaData(ruma_id, mask, area, centroid)
-              new_ruma = RumaData(ruma_id, mask, area, centroid)
-              self.rumas[ruma_id] = new_ruma
-              print(f"Nueva ruma creada: ID {ruma_id}")
-
-              self.store_ruma_summary(ruma_id, mask, centroid, frame_shape)
-
-              self.next_ruma_id += 1
-              del self.candidate_rumas[candidate_key]
-
-    def store_ruma_summary(self, ruma_id, mask, centroid, frame_shape):
-        """Guarda resumen de la ruma (solo metadatos, no imagen aún)"""
-        distances = [np.linalg.norm(np.array(centroid) - np.array(p)) for p in mask]
-        radius = float(np.mean(distances))
-
-        self.ruma_summary[ruma_id] = {
-            'centroid': tuple(map(int, centroid)),
-            'radius': round(radius, 2)
-        }
-
-        print(f" Ruma {ruma_id} almacenada en resumen:")
-        print(self.ruma_summary[ruma_id])
-
-        #  Guardar frame_shape y ruma_id para generar imagen luego (en save_alert2)
-        self.new_ruma_created = (ruma_id, frame_shape)
-
-    def update_ruma(self, ruma_id, mask, frame_count):
-        """Actualiza los datos de una ruma existente"""
-        ruma = self.rumas[ruma_id]
-        ruma.current_area = cv2.contourArea(mask.astype(np.int32))
-        ruma.percentage = (ruma.current_area / ruma.initial_area) * 100
-        ruma.last_seen_frame = frame_count
-
-        # Actualizar centroide
-        ruma.centroid = (int(np.mean([p[0] for p in mask])),
-                        int(np.mean([p[1] for p in mask])))
-
-        # Si la ruma llega a 10% o menos, marcarla como inactiva
-        if ruma.percentage <= 10:
-            ruma.is_active = False
-            print(f"Ruma {ruma_id} eliminada (porcentaje: {ruma.percentage:.1f}%)")
 
     def process_detections(self, frame, frame_count):
         """Procesa las detecciones de personas y vehículos"""
@@ -179,7 +81,7 @@ class RumaMonitor:
                         label = 'persona' if cls == 0 else 'maquinaria'
 
                         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                        frame = self.put_text_with_background(
+                        frame = put_text_with_background(
                             frame, label, (x1, y1 - 5),
                             color=self.TEXT_COLOR_WHITE, font_scale=0.6
                         )
@@ -192,7 +94,7 @@ class RumaMonitor:
                             object_in_zone = True
 
                         # Verificar interacción con rumas
-                        for ruma_id, ruma in self.rumas.items():
+                        for ruma_id, ruma in self.tracker.rumas.items():
                             if not ruma.is_active:
                                 continue
                             if calculate_intersection([x1, y1, x2, y2], ruma.initial_mask):
@@ -228,13 +130,15 @@ class RumaMonitor:
                         if not is_point_in_polygon(centroid, self.detection_zone):
                             continue
 
-                        # Buscar ruma existente más cercana
-                        closest_ruma_id, distance = self.find_closest_ruma(centroid)
+                        # Buscar ruma existente más cercana 
+                        closest_ruma_id, distance = self.tracker.find_closest_ruma(centroid)
+
 
                         if closest_ruma_id is not None:
                             # Actualizar ruma existente
-                            self.update_ruma(closest_ruma_id, mask, frame_count)
-                            ruma = self.rumas[closest_ruma_id]
+                            self.tracker.update_ruma(closest_ruma_id, mask, frame_count)
+
+                            ruma = self.tracker.rumas[closest_ruma_id]
 
                             # Dibujar la ruma
                             overlay = frame.copy()
@@ -296,69 +200,21 @@ class RumaMonitor:
 
                             # Mostrar ID y porcentaje usando posición fija del label
                             label_text = f"R{ruma.id} | {display_percentage:.1f}%"
-                            frame = self.put_text_with_background(
+                            frame = put_text_with_background(
                                 frame, label_text, ruma.label_position,  # ← Usar posición fija
                                 font_scale=0.6, color=self.TEXT_COLOR_WHITE
                             )
 
                         else:
                             # Posible nueva ruma - agregar como candidata
-                            #self.add_candidate_ruma(mask, centroid, frame_count)
-                            self.add_candidate_ruma(mask, centroid, frame_count, frame.shape)
-
-                            #centroide_creado = self.add_candidate_ruma(mask, centroid, frame_count)
-
-                            #if centroide_creado is not None:
-                            #    print("Ruma confirmada con centroide:", centroide_creado)
-                            #print(f"el nuevo centroide es {centroid}")
-                            #print(f" el centroide creado es_{centroid[0]}_{centroid[1]}")
+                            self.tracker.add_candidate_ruma(mask, centroid, frame_count, frame.shape)
 
         # Limpiar candidatas antiguas (más de 100 frames sin confirmación)
-        to_remove = []
-        for key, candidate in self.candidate_rumas.items():
-            if frame_count - candidate['first_frame'] > 100:
-                to_remove.append(key)
-
-        for key in to_remove:
-            del self.candidate_rumas[key]
+        self.tracker.clean_old_candidates(frame_count)
 
         ruma_variation = object_interaction_ended ## tomar screen ultima parte
 
         return frame, ruma_variation, object_interacting, draw_ruma_variation, draw_object_interacting
-
-    def draw_zone_and_status(self, frame, draw_object_in_zone, object_interacting, draw_ruma_variation):
-        """Dibuja la zona de detección y el estado de las alertas"""
-        width = frame.shape[1]
-
-        # Dibujar zona de detección
-        pts = self.detection_zone.reshape((-1, 1, 2))
-        cv2.polylines(frame, [pts], True, (0, 255, 255), 2, lineType=cv2.LINE_AA)
-
-        # Textos de estado
-        text_y_start = 50
-
-        zone_text = "Movimiento en la zona" if draw_object_in_zone else "Zona despejada"
-        zone_color = self.TEXT_COLOR_RED if draw_object_in_zone else self.TEXT_COLOR_GREEN
-        frame = self.put_text_with_background(
-            frame, zone_text, (width - 650, text_y_start),
-            color=zone_color, font_scale=1.5
-        )
-
-        interact_text = "Interaccion con las rumas" if object_interacting else "Sin interacciones"
-        interact_color = self.TEXT_COLOR_RED if object_interacting else self.TEXT_COLOR_GREEN
-        frame = self.put_text_with_background(
-            frame, interact_text, (width - 650, text_y_start + 60),
-            color=interact_color, font_scale=1.5
-        )
-
-        variation_text = "Variacion en las rumas" if draw_ruma_variation else "Rumas en reposo"
-        variation_color = self.TEXT_COLOR_RED if draw_ruma_variation else self.TEXT_COLOR_GREEN
-        frame = self.put_text_with_background(
-            frame, variation_text, (width - 650, text_y_start + 120),
-            color=variation_color, font_scale=1.5
-        )
-
-        return frame
 
     def process_frame(self, frame, frame_count, fps):
         """Procesa un frame completo"""
@@ -378,9 +234,15 @@ class RumaMonitor:
         #object_interacting = len(rumas_interacting) > 0
 
         # Dibujar zona y estado
-        frame_with_drawings = self.draw_zone_and_status(
-            frame_with_drawings, object_in_zone, draw_ruma_variation, draw_object_interacting
-        )
+        frame_with_drawings = draw_zone_and_status(
+            frame_with_drawings,
+            self.detection_zone,
+            object_in_zone,
+            draw_object_interacting,
+            draw_ruma_variation,
+            TEXT_COLOR_RED=self.TEXT_COLOR_RED,
+            TEXT_COLOR_GREEN=self.TEXT_COLOR_GREEN
+            )
 
         # Guardar alertas si hay cambios de estado
         current_alerts = {
@@ -416,12 +278,10 @@ class RumaMonitor:
                     api_url=self.api_url,
                     send=False,
                     save=True,
-                    ruma_summary=self.ruma_summary ,
+                    ruma_summary=self.tracker.ruma_summary,
                     frame_shape=frame.shape,
                     detection_zone = self.detection_zone
                 )
-
-
 
         # Actualizar estados
         self.object_in_zone = object_in_zone
