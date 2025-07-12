@@ -10,6 +10,7 @@ from alerts.alert_manager import save_alert
 from utils.paths import setup_alerts_folder
 from utils.draw import put_text_with_background, draw_zone_and_status
 
+from libs.config_loader import load_camera_config
 
 def process_video(video_path, output_path, start_time_sec, end_time_sec,
                  model_det_path, model_seg_path, detection_zone, camera_number, camera_sn):
@@ -70,36 +71,3 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     out.release()
     print(f"Procesamiento completado. Video guardado en {output_path}")
     print(f"Total de rumas detectadas: {len(monitor.tracker.rumas)}")
-
-
-
-def load_camera_config(camera_number, config_path="mkdocs.yml"):
-    import yaml
-    import numpy as np
-
-    print(f"Numero de cámara: {camera_number}", flush=True)
-
-    # Leer archivo YAML
-    with open(config_path, "r") as file:
-        config = yaml.safe_load(file)
-
-    cameras = config.get("cameras", {})
-
-    if camera_number not in cameras:
-        raise ValueError(f"No hay configuración para la cámara {camera_number}")
-
-    cam_config = cameras[camera_number]
-
-    input_video = cam_config["input_video"]
-    output_video = cam_config["output_video"]
-    camera_sn = cam_config["camera_sn"]
-    save_data = cam_config["save_data"]
-
-    # Extraer el primer (y único) polígono definido para esta cámara
-    polygon_list = cam_config["polygons"]
-    if not polygon_list or not isinstance(polygon_list, list):
-        raise ValueError(f"No se encontraron polígonos válidos para la cámara {camera_number}")
-
-    detection_zone = np.array(polygon_list[0][1], dtype=np.int32)
-
-    return input_video, output_video, detection_zone, camera_sn, save_data
