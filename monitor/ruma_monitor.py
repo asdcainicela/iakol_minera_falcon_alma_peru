@@ -15,7 +15,6 @@ from collections import defaultdict, deque
 from monitor.ruma_data import RumaData
 from utils.geometry import is_point_in_polygon, calculate_intersection
 from alerts.alert_manager import save_alert
-from utils.paths import setup_alerts_folder
 from utils.draw import put_text_with_background, draw_zone_and_status
 
 from monitor.ruma_tracker import RumaTracker
@@ -56,9 +55,6 @@ class RumaMonitor:
         self.TEXT_COLOR_WHITE = (255, 255, 255)
         self.TEXT_COLOR_GREEN = (0, 255, 0)
         self.TEXT_COLOR_RED = (0, 0, 255)
-
-        # Crear carpeta de alertas
-        self.setup_alerts_folder =setup_alerts_folder()
 
     def process_detections(self, frame, frame_count):
         """Procesa las detecciones de personas y vehículos"""
