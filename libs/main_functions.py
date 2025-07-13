@@ -3,7 +3,7 @@ import cv2
 from monitor.ruma_monitor import RumaMonitor 
 
 def process_video(video_path, output_path, start_time_sec, end_time_sec,
-                  model_det_path, model_seg_path, detection_zone, camera_number, camera_sn):
+                  model_det_path, model_seg_path, detection_zone, camera_number, camera_sn, api_url):
     """
     Procesa un video completo usando el monitor de rumas.
 
@@ -26,7 +26,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
         detection_zone = detection_zone[camera_number]
 
     # Inicializar monitor
-    monitor = RumaMonitor(model_det_path, model_seg_path, detection_zone, camera_sn)
+    monitor = RumaMonitor(model_det_path, model_seg_path, detection_zone, camera_sn, api_url)
 
     # Configurar video
     cap = cv2.VideoCapture(video_path)

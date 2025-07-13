@@ -21,7 +21,7 @@ from monitor.ruma_tracker import RumaTracker
 #-----------#
 
 class RumaMonitor:
-    def __init__(self, model_det_path, model_seg_path, detection_zone, camera_sn):
+    def __init__(self, model_det_path, model_seg_path, detection_zone, camera_sn, api_url):
         """
         Inicializa el monitor de rumas
 
@@ -31,7 +31,7 @@ class RumaMonitor:
             detection_zone: Polígono que define la zona de detección
             camera_sn: Número de serie de la cámara
         """
-        self.api_url = "https://fn-alma-mina.azurewebsites.net/api/alert"
+        self.api_url = api_url 
         self.model_det = YOLO(model_det_path)
         self.model_seg = YOLO(model_seg_path)
         self.detection_zone = detection_zone
@@ -271,7 +271,7 @@ class RumaMonitor:
                     camera_sn=self.camera_sn,
                     enterprise='alma',
                     api_url=self.api_url,
-                    send=False,
+                    send=True,
                     save=True,
                     ruma_summary=self.tracker.ruma_summary,
                     frame_shape=frame.shape,
