@@ -6,18 +6,13 @@ import base64
 import torch
 import requests
 import numpy as np
-from datetime import datetime
-from pathlib import Path
 from ultralytics import YOLO
-from collections import defaultdict, deque
 
 #--------- import de la clase ruma data -------#
 from utils.geometry import is_point_in_polygon, calculate_intersection
 from alerts.alert_manager import save_alert
 from utils.draw import put_text_with_background, draw_zone_and_status
-
 from monitor.ruma_tracker import RumaTracker
-
 #-----------#
 
 class RumaMonitor:
