@@ -266,7 +266,7 @@ class RumaMonitor:
                     camera_sn=self.camera_sn,
                     enterprise='alma',
                     api_url=self.api_url,
-                    send=True,
+                    send=False,
                     save=True,
                     ruma_summary=self.tracker.ruma_summary,
                     frame_shape=frame.shape,
