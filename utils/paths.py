@@ -1,7 +1,8 @@
 from pathlib import Path
 from datetime import datetime
 
-def setup_alerts_folder(base_path="alerts_save") -> Path:
+
+def setup_alerts_folder(base_path="alerts_save") -> Path: # no usado 
     """
     Crea la carpeta base para guardar alertas organizada por fecha.
     
@@ -36,6 +37,26 @@ def generar_output_video(video_path: str) -> Path:
     output_folder.mkdir(parents=True, exist_ok=True)
 
     return output_folder / output_filename
+
+def generar_folder_fecha(base_path: str | Path, etiqueta: str = "local") -> Path:
+    """
+    Crea una carpeta dentro de `base_path` con la fecha actual y una etiqueta opcional.
+
+    Por ejemplo: 'alerts_save/2025-07-13_local'
+
+    Args:
+        base_path (str | Path): Ruta base donde crear la carpeta.
+        etiqueta (str): Sufijo adicional para distinguir carpetas (por defecto "local").
+
+    Returns:
+        Path: Ruta completa a la carpeta creada.
+    """
+    base = Path(base_path)
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    folder_name = f"{date_str}_{etiqueta}"
+    output_path = base / folder_name
+    output_path.mkdir(parents=True, exist_ok=True)
+    return output_path
 
 if __name__ == "__main__":
     # Crear carpeta de alertas

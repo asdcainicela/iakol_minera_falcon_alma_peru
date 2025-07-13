@@ -4,6 +4,7 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 
+from utils.paths import generar_folder_fecha
 def save_alert_local(
     alert_type,
     frame,
@@ -17,9 +18,7 @@ def save_alert_local(
     ):
     """Guarda localmente una alerta con imagen y metadatos"""
     timestamp = datetime.now()
-    date_str = timestamp.strftime("%Y-%m-%d")
-    base_path = Path("alerts_save") / f"{date_str}_local"
-    base_path.mkdir(parents=True, exist_ok=True) 
+    base_path = generar_folder_fecha("alerts_save", etiqueta="local")
     print("💾 Save alert local ejecutándose")
 
     # Calcular tiempo del video

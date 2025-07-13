@@ -12,7 +12,6 @@ from ultralytics import YOLO
 from collections import defaultdict, deque
 
 #--------- import de la clase ruma data -------#
-from monitor.ruma_data import RumaData
 from utils.geometry import is_point_in_polygon, calculate_intersection
 from alerts.alert_manager import save_alert
 from utils.draw import put_text_with_background, draw_zone_and_status
@@ -259,8 +258,8 @@ class RumaMonitor:
                 alert_names = {
                     'movement': 'movimiento_zona',
                     'interaction': 'interaccion_rumas',
-                    'variation': 'variacion_rumas'#,
-                    #'new': 'nueva_ruma'
+                    'variation': 'variacion_rumas',
+                    'new': 'nueva_ruma'
                 }
                 #self.save_alert(alert_names[alert_type], frame_with_drawings, frame_count, fps)
                 #self.save_alert2(alert_names[alert_type], frame_with_drawings, frame_count, fps)
