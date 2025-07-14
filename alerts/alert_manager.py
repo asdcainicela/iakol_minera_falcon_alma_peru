@@ -1,8 +1,23 @@
 from alerts.alert_sender import prepare_and_send_alert
-from alerts.alert_storage import save_alert_local
+from alerts.alert_storage import save_alert_local, RumaData, AlertContext
+import numpy as np
+from typing import Optional, Tuple, List
 
-def save_alert(alert_type, frame, frame_count, fps, camera_sn, enterprise, api_url,
-               send=True, save=True, ruma_summary=None, frame_shape=None, detection_zone=None) -> bool:
+def save_alert(
+    alert_type: str,
+    ruma_data: RumaData,
+    frame: np.ndarray,
+    frame_count: int,
+    fps: float,
+    camera_sn: str,
+    enterprise: str,
+    api_url: str,
+    send: bool = True,
+    save: bool = True,
+    ruma_summary: Optional[dict] = None,
+    frame_shape: Optional[Tuple[int, int]] = None,
+    detection_zone: Optional[List[Tuple[int, int]]] = None
+) -> bool:
     """
     Orquesta el envío y guardado de una alerta.
     Retorna True si todo se ejecuta correctamente,
@@ -18,9 +33,9 @@ def save_alert(alert_type, frame, frame_count, fps, camera_sn, enterprise, api_u
                 enterprise=enterprise,
                 api_url=api_url
             )
+
         if save:
-            save_alert_local(
-                alert_type=alert_type,
+            context = AlertContext(
                 frame=frame,
                 frame_count=frame_count,
                 fps=fps,
@@ -31,8 +46,14 @@ def save_alert(alert_type, frame, frame_count, fps, camera_sn, enterprise, api_u
                 detection_zone=detection_zone
             )
 
+            save_alert_local(
+                alert_type=alert_type,
+                ruma_data=ruma_data,
+                context=context
+            )
+
         return True
 
     except Exception as e:
-        print(f" Error en save_alert: {e}")
+        print(f"❌ Error en save_alert: {e}")
         return False

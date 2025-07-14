@@ -4,58 +4,83 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 
+from dataclasses import dataclass
+from typing import Tuple, List, Optional
+import numpy as np
+
 from utils.paths import generar_folder_fecha
+
+@dataclass
+class RumaData:
+    id: int
+    percent: float
+    centroid: Tuple[int, int]
+    coords: List[Tuple[int, int]]
+    radius: float
+
+@dataclass
+class AlertContext:
+    frame: np.ndarray
+    frame_count: int
+    fps: float
+    camera_sn: str
+    enterprise: str = "default"
+    ruma_summary: Optional[dict] = None
+    frame_shape: Optional[Tuple[int, int]] = None
+    detection_zone: Optional[List[Tuple[int, int]]] = None
+
+
 def save_alert_local(
-    alert_type,
-    frame,
-    frame_count,
-    fps,
-    camera_sn,
-    enterprise="default",
-    ruma_summary=None,
-    frame_shape=None,
-    detection_zone=None
-    ):
+    alert_type: str,
+    ruma_data: RumaData = None,
+    context: AlertContext = None
+):
     """Guarda localmente una alerta con imagen y metadatos"""
     timestamp = datetime.now()
     base_path = generar_folder_fecha("alerts_save", etiqueta="local")
     print("💾 Save alert local ejecutándose")
 
     # Calcular tiempo del video
-    video_time_seconds = frame_count / fps
+    video_time_seconds = context.frame_count / context.fps
 
     # Metadata de la alerta
     metadata = {
-        "cameraSN": camera_sn,
-        "enterprise": enterprise,
+        "cameraSN": context.camera_sn,
+        "enterprise": context.enterprise,
         "alert_type": alert_type,
         "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+        "id": ruma_data.id, 
+        "percent": ruma_data.percent,
+        "centroid": ruma_data.centroid,  
+        "coords": ruma_data.coords,
+        "radius": ruma_data.radius,
+        "frame_number": context.frame_count,
         "video_time_seconds": video_time_seconds,
-        "frame_number": frame_count
     }
+    print(f" Metadata de alerta: {metadata}")
 
     # Nombres de archivo
-    base_filename = f"{timestamp.strftime('%H-%M-%S')}_{alert_type}_{frame_count}"
+    base_filename = f"{timestamp.strftime('%H-%M-%S')}_{alert_type}_{context.frame_count}"
     json_path = base_path / f"{base_filename}.json"
     image_path = base_path / f"{base_filename}.jpg"
 
     # Guardar JSON y frame
     with open(json_path, 'w') as f:
         json.dump(metadata, f, indent=2)
-    cv2.imwrite(str(image_path), frame)
+    cv2.imwrite(str(image_path), context.frame)
 
     # Guardar resumen visual si hay nueva ruma
-    if ruma_summary and frame_shape is not None:
+    if context.ruma_summary and context.frame_shape is not None:
         save_ruma_summary_image(
-            ruma_summary=ruma_summary,
-            frame_shape=frame_shape,
+            ruma_summary=context.ruma_summary,
+            frame_shape=context.frame_shape,
             base_path=base_path,
             timestamp=timestamp,
-            frame_count=frame_count,
-            detection_zone=detection_zone
+            frame_count=context.frame_count,
+            detection_zone=context.detection_zone
         )
 
-    print(f"✅ Alerta local guardada: {alert_type} - {timestamp.strftime('%H:%M:%S')}")
+    print(f" Alerta local guardada: {alert_type} - {timestamp.strftime('%H:%M:%S')}")
 
 def save_ruma_summary_image(
     ruma_summary,

@@ -13,6 +13,8 @@ from utils.geometry import is_point_in_polygon, calculate_intersection
 from alerts.alert_manager import save_alert
 from utils.draw import put_text_with_background, draw_zone_and_status
 from monitor.ruma_tracker import RumaTracker
+from alerts.alert_storage import RumaData # Dataclass para almacenar datos de rumas
+
 #-----------#
 
 class RumaMonitor:
@@ -104,7 +106,6 @@ class RumaMonitor:
         draw_object_interacting = False
         draw_ruma_variation = False
         #---
-
 
         if result_seg and len(result_seg) > 0:
             for r in result_seg:
@@ -256,22 +257,39 @@ class RumaMonitor:
                     'variation': 'variacion_rumas',
                     'new': 'nueva_ruma'
                 }
-                #self.save_alert(alert_names[alert_type], frame_with_drawings, frame_count, fps)
-                #self.save_alert2(alert_names[alert_type], frame_with_drawings, frame_count, fps)
-                save_alert(
-                    alert_type=alert_names[alert_type],
-                    frame=frame_with_drawings,
-                    frame_count=frame_count,
-                    fps=fps,
-                    camera_sn=self.camera_sn,
-                    enterprise='alma',
-                    api_url=self.api_url,
-                    send=False,
-                    save=True,
-                    ruma_summary=self.tracker.ruma_summary,
-                    frame_shape=frame.shape,
-                    detection_zone = self.detection_zone
-                )
+
+                ruma_data = None
+                if len(self.tracker.rumas) > 0:
+                    try:
+                        ruma = list(self.tracker.rumas.values())[-1]
+                        ruma_data = RumaData(
+                            id=getattr(ruma, 'id', None),
+                            percent=getattr(ruma, 'percentage', None),
+                            centroid=getattr(ruma, 'centroid', None),
+                            coords=getattr(ruma, 'coords', None),
+                            radius=getattr(ruma, 'radius', None)
+                        )
+                    except Exception as e:
+                        print(f" No se pudo crear RumaData: {e}")
+                        ruma_data = None
+
+                if ruma_data is not None:
+                    save_alert(
+                        alert_type=alert_names[alert_type],
+                        ruma_data=ruma_data,
+                        frame=frame_with_drawings,
+                        frame_count=frame_count,
+                        fps=fps,
+                        camera_sn=self.camera_sn,
+                        enterprise='alma',
+                        api_url=self.api_url,
+                        send=False,
+                        save=True,
+                        ruma_summary=self.tracker.ruma_summary,
+                        frame_shape=frame.shape,
+                        detection_zone=self.detection_zone
+                    )
+
 
         # Actualizar estados
         self.object_in_zone = object_in_zone

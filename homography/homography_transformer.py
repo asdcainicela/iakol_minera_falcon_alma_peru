@@ -1,5 +1,7 @@
 import cv2
 import numpy as np
+import cv2
+import numpy as np
 
 class HomographyTransformer:
     def __init__(self, input_pts, output_pts):
@@ -9,49 +11,53 @@ class HomographyTransformer:
         print("[INFO] Matriz de homografía H:\n", self.H)
 
     def transform_point(self, point):
-        """Transforma un solo punto (x, y)"""
         pt = np.array([[point]], dtype=np.float32)
         transformed = cv2.perspectiveTransform(pt, self.H)
         return transformed[0][0]
 
     def transform_points(self, points):
-        """Transforma múltiples puntos [(x1, y1), (x2, y2), ...]"""
         pts = np.array([points], dtype=np.float32)
         transformed = cv2.perspectiveTransform(pts, self.H)
         return transformed[0]
 
+    def transform_circle(self, center, radius):
+        """
+        Transforma un círculo definido por un centro y un radio.
+        Devuelve el nuevo centro y radio proyectado.
+        """
+        point_on_circle = (center[0] + radius, center[1])
+        new_center = self.transform_point(center)
+        new_edge = self.transform_point(point_on_circle)
+        new_radius = np.linalg.norm(new_edge - new_center)
+        return new_center, new_radius
+
 
 if __name__ == "__main__":
-    # === Coordenadas de entrada (desde imagen original)
     input_pts = [
         [1889, 454],
         [1122, 256],
         [120, 1070],
         [1441, 631],
-        [1893,780]
+        [1893, 780]
     ]
 
-    # === Coordenadas destino (en vista deseada)
     output_pts = [
         [837, 72],
         [324, 73],
         [339, 692],
         [575, 363],
-        [758,390]
+        [758, 390]
     ]
 
     transformer = HomographyTransformer(input_pts, output_pts)
 
-    # === Puntos bien dentro del polígono original
-    test_points = [
-        (1000, 500),
-        (1400, 600),
-        (700, 800),
-        (900, 700)
-    ]
+    # Círculo original
+    centroide = (1000, 500)
+    radio_original = 50
 
-    transformed = transformer.transform_points(test_points)
+    centro_transformado, radio_transformado = transformer.transform_circle(centroide, radio_original)
 
-    print("[TEST] Puntos internos transformados:")
-    for original, mapped in zip(test_points, transformed):
-        print(f"  {original} → {mapped}")
+    print(f"[INFO] Centro original: {centroide}")
+    print(f"[INFO] Centro transformado: {centro_transformado}")
+    print(f"[INFO] Radio original: {radio_original}")
+    print(f"[INFO] Radio transformado: {radio_transformado}")
