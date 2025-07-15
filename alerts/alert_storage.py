@@ -15,7 +15,6 @@ class RumaInfo:
     id: int
     percent: float
     centroid: Tuple[int, int]
-    coords: List[Tuple[int, int]]
     radius: float
 
 
@@ -52,8 +51,7 @@ def save_alert_local(
         "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
         "id": ruma_data.id, 
         "percent": ruma_data.percent,
-        "centroid": ruma_data.centroid,  
-        "coords": ruma_data.coords,
+        "coords": ruma_data.centroid,
         "radius": ruma_data.radius,
         "frame_number": context.frame_count,
         "video_time_seconds": video_time_seconds,
