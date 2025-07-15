@@ -1,5 +1,6 @@
 from alerts.alert_sender import prepare_and_send_alert
-from alerts.alert_storage import save_alert_local, RumaInfo, AlertContext
+from alerts.alert_storage import save_alert_local
+from alerts.alert_info import RumaInfo, AlertContext
 import numpy as np
 from typing import Optional, Tuple, List
 
@@ -16,7 +17,8 @@ def save_alert(
     save: bool = True,
     ruma_summary: Optional[dict] = None,
     frame_shape: Optional[Tuple[int, int]] = None,
-    detection_zone: Optional[List[Tuple[int, int]]] = None
+    detection_zone: Optional[List[Tuple[int, int]]] = None,
+    transformer: Optional[object] = None
 ) -> bool:
     """
     Orquesta el envío y guardado de una alerta.
@@ -35,6 +37,7 @@ def save_alert(
             )
 
         if save:
+
             context = AlertContext(
                 frame=frame,
                 frame_count=frame_count,
@@ -49,11 +52,12 @@ def save_alert(
             save_alert_local(
                 alert_type=alert_type,
                 ruma_data=ruma_data,
-                context=context
+                context=context,
+                transformer=transformer
             )
 
         return True
 
     except Exception as e:
-        print(f"❌ Error en save_alert: {e}")
+        print(f"Error en save_alert: {e}")
         return False

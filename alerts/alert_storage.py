@@ -3,45 +3,60 @@ import cv2
 import numpy as np
 from pathlib import Path
 from datetime import datetime
+from typing import Tuple, Optional
 
-from dataclasses import dataclass
-from typing import Tuple, List, Optional
-import numpy as np
-
+from alerts.alert_info import RumaInfo, AlertContext
 from utils.paths import generar_folder_fecha
-
-@dataclass
-class RumaInfo:
-    id: int
-    percent: float
-    centroid: Tuple[int, int]
-    radius: float
-
-
-@dataclass
-class AlertContext:
-    frame: np.ndarray
-    frame_count: int
-    fps: float
-    camera_sn: str
-    enterprise: str = "default"
-    ruma_summary: Optional[dict] = None
-    frame_shape: Optional[Tuple[int, int]] = None
-    detection_zone: Optional[List[Tuple[int, int]]] = None
-
 
 def save_alert_local(
     alert_type: str,
     ruma_data: RumaInfo = None,
-    context: AlertContext = None
+    context: AlertContext = None,
+    transformer: Optional[object] = None
 ):
     """Guarda localmente una alerta con imagen y metadatos"""
     timestamp = datetime.now()
     base_path = generar_folder_fecha("alerts_save", etiqueta="local")
-    print("💾 Save alert local ejecutándose")
+    print(" Save alert local ejecutándose")
 
     # Calcular tiempo del video
     video_time_seconds = context.frame_count / context.fps
+    
+    if ruma_data and ruma_data.centroid is not None and ruma_data.radius is not None:
+        radius = float(ruma_data.radius)
+        centroid = tuple(ruma_data.centroid)
+
+        if transformer is not None:
+            centroid, radius = transformer.transform_circle(centroid, radius)
+            centroid = tuple(map(float, centroid))
+            radius = float(radius)
+
+            print(f"[INFO] Radio original: {ruma_data.radius:.2f}, Centroide original: {ruma_data.centroid}")
+            print(f"[INFO] Radio transformado: {radius:.8f}, Centroide transformado: {centroid}")
+
+            if ruma_data.percent == 100:
+                draw_transformed_rumas_on_map(
+                    centroid=centroid,
+                    radius=radius,
+                    ruma_id=ruma_data.id,
+                    map_image_path="homography/img/Mapa1_nuevo.png",
+                    output_folder=base_path,
+                    frame_count=context.frame_count
+                )
+
+                save_ruma_summary_image(
+                    ruma_summary=context.ruma_summary,
+                    frame_shape=context.frame_shape,
+                    base_path=base_path,
+                    timestamp=timestamp,
+                    frame_count=context.frame_count,
+                    detection_zone=context.detection_zone
+                )
+        else:
+            print(f"[INFO] Sin transformación: radio = {radius:.2f}, centroide = {centroid}")
+    else:
+        centroid = None
+        radius = None
 
     # Metadata de la alerta
     metadata = {
@@ -51,8 +66,9 @@ def save_alert_local(
         "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
         "id": ruma_data.id, 
         "percent": ruma_data.percent,
-        "coords": ruma_data.centroid,
-        "radius": ruma_data.radius,
+        "coords": centroid, #ruma_data.centroid,
+        "radius": radius,#ruma_data.radius,
+        "frame": None,
         "frame_number": context.frame_count,
         "video_time_seconds": video_time_seconds,
     }
@@ -69,17 +85,12 @@ def save_alert_local(
     cv2.imwrite(str(image_path), context.frame)
 
     # Guardar resumen visual si hay nueva ruma
+    """
     if context.ruma_summary and context.frame_shape is not None:
-        save_ruma_summary_image(
-            ruma_summary=context.ruma_summary,
-            frame_shape=context.frame_shape,
-            base_path=base_path,
-            timestamp=timestamp,
-            frame_count=context.frame_count,
-            detection_zone=context.detection_zone
-        )
-
+        
+    """
     print(f" Alerta local guardada: {alert_type} - {timestamp.strftime('%H:%M:%S')}")
+
 
 def save_ruma_summary_image(
     ruma_summary,
@@ -111,3 +122,34 @@ def save_ruma_summary_image(
     save_path = base_path / filename
     cv2.imwrite(str(save_path), summary_image)
     print(f"📄 Imagen resumen de rumas guardada en: {save_path}")
+
+def draw_transformed_rumas_on_map(
+    centroid: Tuple[float, float],
+    radius: float,
+    ruma_id: int,
+    map_image_path: str = "homography/img/Mapa1_nuevo.png",
+    output_folder: Optional[Path] = None,
+    frame_count: Optional[int] = None
+):
+    """Dibuja una ruma transformada sobre el mapa y guarda la imagen."""
+    mapa = cv2.imread(map_image_path)
+    if mapa is None:
+        print(f"[ERROR] No se pudo cargar la imagen: {map_image_path}")
+        return
+
+    centro = tuple(map(int, centroid))
+    radio = int(round(radius))
+
+    # Dibujar círculo y centroide
+    cv2.circle(mapa, centro, radio, (0, 0, 255), 2)
+    cv2.circle(mapa, centro, 3, (0, 0, 0), -1)
+    cv2.putText(mapa, f"R{ruma_id}", (centro[0] + 10, centro[1] - 10),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
+
+    # Guardar la imagen modificada
+    now = datetime.now()
+    folder = Path(map_image_path).parent if output_folder is None else output_folder
+    frame_suffix = f"_{frame_count}" if frame_count else ""
+    out_path = folder / f"mapa_con_ruma_{ruma_id}_{now.strftime('%H-%M-%S')}{frame_suffix}.jpg"
+    cv2.imwrite(str(out_path), mapa)
+    print(f"🗺️ Mapa con ruma R{ruma_id} guardado en: {out_path}")
