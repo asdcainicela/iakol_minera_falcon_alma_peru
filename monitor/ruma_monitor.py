@@ -13,12 +13,12 @@ from utils.geometry import is_point_in_polygon, calculate_intersection
 from alerts.alert_manager import save_alert
 from utils.draw import put_text_with_background, draw_zone_and_status
 from monitor.ruma_tracker import RumaTracker
-from alerts.alert_storage import RumaInfo # Dataclass para almacenar datos de rumas
+from alerts.alert_info import RumaInfo # Dataclass para almacenar datos de rumas
 
 #-----------#
 
 class RumaMonitor:
-    def __init__(self, model_det_path, model_seg_path, detection_zone, camera_sn, api_url):
+    def __init__(self, model_det_path, model_seg_path, detection_zone, camera_sn, api_url, transformer):
         """
         Inicializa el monitor de rumas
 
@@ -52,6 +52,8 @@ class RumaMonitor:
         self.TEXT_COLOR_WHITE = (255, 255, 255)
         self.TEXT_COLOR_GREEN = (0, 255, 0)
         self.TEXT_COLOR_RED = (0, 0, 255)
+
+        self.transformer = transformer
 
     def process_detections(self, frame, frame_count):
         """Procesa las detecciones de personas y vehículos"""
@@ -264,7 +266,8 @@ class RumaMonitor:
                 save=True,
                 ruma_summary=self.tracker.ruma_summary,
                 frame_shape=frame.shape,
-                detection_zone=self.detection_zone
+                detection_zone=self.detection_zone,
+                transformer=self.transformer
             )
             
             # Limpiar flag después de procesar
@@ -336,7 +339,8 @@ class RumaMonitor:
                         save=True,
                         ruma_summary=self.tracker.ruma_summary,
                         frame_shape=frame.shape,
-                        detection_zone=self.detection_zone
+                        detection_zone=self.detection_zone,
+                        transformer=self.transformer
                     )
 
         # Actualizar estados
