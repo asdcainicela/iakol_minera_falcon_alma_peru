@@ -42,6 +42,7 @@ class RumaMonitor:
         self.object_in_zone = False
         self.object_interacting = False
         self.ruma_variation = False
+        self.new_variation = False
         self.last_interaction_frame = {}  # Para controlar cuando mostrar porcentajes
 
         # Configuración de colores
@@ -239,14 +240,18 @@ class RumaMonitor:
         current_alerts = {
             'movement': object_in_zone,
             'interaction': object_interacting,
-            'variation': ruma_variation
+            'variation': ruma_variation,
+            'new': self.new_variation
         }
 
         previous_alerts = {
             'movement': self.object_in_zone,
             'interaction': self.object_interacting,
-            'variation': self.ruma_variation
+            'variation': self.ruma_variation,
+            'new': self.new_variation
         }
+
+        new_variation = False ## prueba
 
         # Guardar alertas solo cuando se activan (cambio de False a True)
         for alert_type, current_state in current_alerts.items():
@@ -266,7 +271,6 @@ class RumaMonitor:
                             id=getattr(ruma, 'id', None),
                             percent=getattr(ruma, 'percentage', None),
                             centroid=getattr(ruma, 'centroid', None),
-                            coords=getattr(ruma, 'coords', None),
                             radius=getattr(ruma, 'radius', None)
                         )
                     except Exception as e:
@@ -295,6 +299,7 @@ class RumaMonitor:
         self.object_in_zone = object_in_zone
         self.object_interacting = object_interacting
         self.ruma_variation = ruma_variation
+        self.new_variation = new_variation
 
         return frame_with_drawings
 
