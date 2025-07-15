@@ -13,7 +13,7 @@ from utils.geometry import is_point_in_polygon, calculate_intersection
 from alerts.alert_manager import save_alert
 from utils.draw import put_text_with_background, draw_zone_and_status
 from monitor.ruma_tracker import RumaTracker
-from alerts.alert_storage import RumaData # Dataclass para almacenar datos de rumas
+from alerts.alert_storage import RumaInfo # Dataclass para almacenar datos de rumas
 
 #-----------#
 
@@ -262,7 +262,7 @@ class RumaMonitor:
                 if len(self.tracker.rumas) > 0:
                     try:
                         ruma = list(self.tracker.rumas.values())[-1]
-                        ruma_data = RumaData(
+                        ruma_data = RumaInfo(
                             id=getattr(ruma, 'id', None),
                             percent=getattr(ruma, 'percentage', None),
                             centroid=getattr(ruma, 'centroid', None),
@@ -270,7 +270,7 @@ class RumaMonitor:
                             radius=getattr(ruma, 'radius', None)
                         )
                     except Exception as e:
-                        print(f" No se pudo crear RumaData: {e}")
+                        print(f" No se pudo crear RumaInfo: {e}")
                         ruma_data = None
 
                 if ruma_data is not None:
