@@ -8,7 +8,7 @@ class HomographyTransformer:
         self.input_pts = np.array(input_pts, dtype=np.float32)
         self.output_pts = np.array(output_pts, dtype=np.float32)
         self.H, _ = cv2.findHomography(self.input_pts, self.output_pts)
-        print("[INFO] Matriz de homografía H:\n", self.H)
+        #print("[INFO] Matriz de homografía H:\n", self.H)
 
     def transform_point(self, point):
         pt = np.array([[point]], dtype=np.float32)
