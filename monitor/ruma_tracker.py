@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from monitor.ruma_data import RumaData
+from monitor.ruma_data import RumaData  # Asegúrate que este archivo contenga el dataclass
 
 class RumaTracker:
     def __init__(self):
@@ -8,9 +8,9 @@ class RumaTracker:
         self.candidate_rumas = {}  # clave: str → datos temporales
         self.next_ruma_id = 1
         self.ruma_summary = {}
-        self.new_ruma_created = None
+        self.new_ruma_ids = []  # IDs de rumas creadas recientemente
 
-    def find_closest_ruma(self, centroid, max_distance=50): #max 100
+    def find_closest_ruma(self, centroid, max_distance=50):
         """Encuentra la ruma activa más cercana a un centroide dado"""
         min_distance = float('inf')
         closest_ruma = None
@@ -44,12 +44,20 @@ class RumaTracker:
             if self.candidate_rumas[key]['confirmations'] >= 6:
                 ruma_id = self.next_ruma_id
                 area = cv2.contourArea(mask.astype(np.int32))
-                new_ruma = RumaData(ruma_id, mask, area, centroid)
+                #radius = self._calculate_radius(mask, centroid)
+                #coords = mask.astype(int).tolist()  # asegúrate que sea una lista de puntos
+
+                new_ruma = RumaData(
+                    id=ruma_id,
+                    centroid=centroid
+                )
+
                 self.rumas[ruma_id] = new_ruma
 
                 self.store_ruma_summary(ruma_id, mask, centroid, frame_shape)
+                self.new_ruma_ids.append(ruma_id)
 
-                print(f"Nueva ruma creada: ID {ruma_id}")
+                print(f"✅ Nueva ruma creada: ID {ruma_id}")
                 self.next_ruma_id += 1
                 del self.candidate_rumas[key]
 
@@ -68,7 +76,7 @@ class RumaTracker:
 
         if ruma.percentage <= 10:
             ruma.is_active = False
-            print(f"Ruma {ruma_id} eliminada (porcentaje: {ruma.percentage:.1f}%)")
+            print(f"⚠️ Ruma {ruma_id} eliminada (porcentaje: {ruma.percentage:.1f}%)")
 
     def store_ruma_summary(self, ruma_id, mask, centroid, frame_shape):
         """Guarda metadatos de la ruma (para alertas, etc.)"""
@@ -80,7 +88,11 @@ class RumaTracker:
             'radius': round(radius, 2)
         }
 
-        self.new_ruma_created = (ruma_id, frame_shape)
+    def get_and_clear_new_rumas(self):
+        """Devuelve y limpia los IDs de rumas recién creadas"""
+        new_ids = self.new_ruma_ids.copy()
+        self.new_ruma_ids.clear()
+        return new_ids
 
     def clean_old_candidates(self, frame_count, max_age=100):
         """Elimina rumas candidatas que no se confirmaron a tiempo"""
@@ -91,3 +103,6 @@ class RumaTracker:
 
         for key in to_remove:
             del self.candidate_rumas[key]
+    def _calculate_radius(self, mask, centroid):
+        distances = [np.linalg.norm(np.array(centroid) - np.array(p)) for p in mask]
+        return float(np.mean(distances)) if distances else 0.0

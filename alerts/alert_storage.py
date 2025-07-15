@@ -11,7 +11,7 @@ import numpy as np
 from utils.paths import generar_folder_fecha
 
 @dataclass
-class RumaData:
+class RumaDataExport:
     id: int
     percent: float
     centroid: Tuple[int, int]

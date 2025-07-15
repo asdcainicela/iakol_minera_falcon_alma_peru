@@ -13,7 +13,7 @@ from utils.geometry import is_point_in_polygon, calculate_intersection
 from alerts.alert_manager import save_alert
 from utils.draw import put_text_with_background, draw_zone_and_status
 from monitor.ruma_tracker import RumaTracker
-from alerts.alert_storage import RumaData # Dataclass para almacenar datos de rumas
+from monitor.ruma_data import RumaData # Dataclass para almacenar datos de rumas
 
 #-----------#
 

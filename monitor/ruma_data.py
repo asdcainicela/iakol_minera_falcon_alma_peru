@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Tuple, Optional
+from typing import List, Tuple, Optional
 import numpy as np
 
 @dataclass
@@ -8,7 +8,6 @@ class RumaData:
     initial_mask: np.ndarray
     initial_area: float
     centroid: Tuple[int, int]
-
     current_area: float = field(init=False)
     percentage: float = field(default=100.0)
     last_seen_frame: int = field(default=0)
