@@ -11,12 +11,13 @@ import numpy as np
 from utils.paths import generar_folder_fecha
 
 @dataclass
-class RumaDataExport:
+class RumaInfo:
     id: int
     percent: float
     centroid: Tuple[int, int]
     coords: List[Tuple[int, int]]
     radius: float
+
 
 @dataclass
 class AlertContext:
@@ -32,7 +33,7 @@ class AlertContext:
 
 def save_alert_local(
     alert_type: str,
-    ruma_data: RumaData = None,
+    ruma_data: RumaInfo = None,
     context: AlertContext = None
 ):
     """Guarda localmente una alerta con imagen y metadatos"""

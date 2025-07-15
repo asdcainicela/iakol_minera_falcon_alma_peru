@@ -1,12 +1,11 @@
 from alerts.alert_sender import prepare_and_send_alert
-from alerts.alert_storage import save_alert_local, AlertContext, RumaDataExport
-
+from alerts.alert_storage import save_alert_local, RumaInfo, AlertContext
 import numpy as np
 from typing import Optional, Tuple, List
 
 def save_alert(
     alert_type: str,
-    ruma_data: RumaDataExport,
+    ruma_data: RumaInfo,
     frame: np.ndarray,
     frame_count: int,
     fps: float,
