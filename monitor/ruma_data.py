@@ -16,3 +16,11 @@ class RumaData:
         self.label_position = (centroid[0] - 30, centroid[1] - 10)  # Posición fija del label
         self.was_interacting = False
         self.enterprise = None
+        
+        # Calcular radio basado en la máscara inicial
+        self.radius = self._calculate_radius(initial_mask, centroid)
+    
+    def _calculate_radius(self, mask, centroid):
+        """Calcula el radio promedio desde el centroide hasta los puntos de la máscara"""
+        distances = [np.linalg.norm(np.array(centroid) - np.array(p)) for p in mask]
+        return float(np.mean(distances)) if distances else 0.0

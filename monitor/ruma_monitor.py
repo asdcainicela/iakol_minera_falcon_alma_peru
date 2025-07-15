@@ -106,6 +106,7 @@ class RumaMonitor:
         # Draw zone
         draw_object_interacting = False
         draw_ruma_variation = False
+        ruma_with_variation = None  # Para guardar qué ruma tuvo variación
         #---
 
         if result_seg and len(result_seg) > 0:
@@ -125,7 +126,6 @@ class RumaMonitor:
                         # Buscar ruma existente más cercana 
                         closest_ruma_id, distance = self.tracker.find_closest_ruma(centroid)
 
-
                         if closest_ruma_id is not None:
                             # Actualizar ruma existente
                             self.tracker.update_ruma(closest_ruma_id, mask, frame_count)
@@ -140,7 +140,6 @@ class RumaMonitor:
                             # --------  Lógica mejorada para mostrar porcentaje --------- #
                             # 1. Detectar interacción actual
                             is_interacting = closest_ruma_id in rumas_interacting
-                            #print("is_interacting =", is_interacting, "type:", type(is_interacting))
 
                             # Detectar fin de interacción (flanco de bajada)
                             draw_object_interacting = is_interacting
@@ -148,11 +147,11 @@ class RumaMonitor:
                             if ruma.was_interacting and not is_interacting:
                               object_interaction_ended = True
                               draw_object_interacting = True
+                              ruma_with_variation = ruma  # Guardar la ruma que tuvo variación
 
                             if is_interacting and not ruma.was_interacting:
                               object_interacting = True
                               draw_object_interacting = True
-
 
                             # 3. Guardar estado actual para el siguiente frame
                             ruma.was_interacting = is_interacting
@@ -160,21 +159,15 @@ class RumaMonitor:
                             if is_interacting:
                                 ruma.frames_without_interaction = 0
                                 ruma.last_stable_percentage = ruma.percentage  # Reiniciar al interactuar
-                                #draw_object_interacting = True
                             else:
                                 ruma.frames_without_interaction += 1
                                 # Mientras no se llega a 30 frames, guarda el mayor porcentaje
                                 if ruma.frames_without_interaction < max_frames_without_interaction: #30
                                     ruma.last_stable_percentage = max(ruma.last_stable_percentage, ruma.percentage)
-                                #draw_object_interacting = False
 
                             # Limita todo a máximo 100%
                             ruma.percentage = min(ruma.percentage, 100)
                             ruma.last_stable_percentage = min(ruma.last_stable_percentage, 100)
-
-                            #if ruma.frames_without_interaction == max_frames_without_interaction: #corregir
-                            # object_interacting = True # corregir
-
 
                             # Decide qué mostrar
                             if ruma.frames_without_interaction >= max_frames_without_interaction:
@@ -183,12 +176,6 @@ class RumaMonitor:
                             else:
                                 display_percentage = ruma.percentage
                                 draw_ruma_variation = True
-
-                            #--------                                          -------#
-
-                            # Detectar variación significativa
-                            #if display_percentage < 95:
-                            #    ruma_variation = True
 
                             # Mostrar ID y porcentaje usando posición fija del label
                             label_text = f"R{ruma.id} | {display_percentage:.1f}%"
@@ -206,7 +193,7 @@ class RumaMonitor:
 
         ruma_variation = object_interaction_ended ## tomar screen ultima parte
 
-        return frame, ruma_variation, object_interacting, draw_ruma_variation, draw_object_interacting
+        return frame, ruma_variation, object_interacting, draw_ruma_variation, draw_object_interacting, ruma_with_variation
 
     def process_frame(self, frame, frame_count, fps):
         """Procesa un frame completo"""
@@ -218,12 +205,9 @@ class RumaMonitor:
         )
 
         # Procesar segmentación
-        frame_with_drawings, ruma_variation, object_interacting, draw_ruma_variation, draw_object_interacting = self.process_segmentation(
+        frame_with_drawings, ruma_variation, object_interacting, draw_ruma_variation, draw_object_interacting, ruma_with_variation = self.process_segmentation(
             frame_with_drawings, frame_count, rumas_interacting
         )
-
-        # Determinar estados de alerta
-        #object_interacting = len(rumas_interacting) > 0
 
         # Dibujar zona y estado
         frame_with_drawings = draw_zone_and_status(
@@ -251,7 +235,40 @@ class RumaMonitor:
             'new': self.new_variation
         }
 
-        new_variation = False ## prueba
+        # Detectar nuevas rumas
+        if self.tracker.new_ruma_created:
+            ruma_id, frame_shape = self.tracker.new_ruma_created
+            ruma = self.tracker.rumas[ruma_id]
+            
+            # Obtener radio desde el resumen
+            radius = self.tracker.ruma_summary[ruma_id]['radius']
+            
+            # Alerta de nueva ruma
+            ruma_data = RumaInfo(
+                id=ruma.id,
+                percent=100.0,  # Nueva ruma siempre es 100%
+                centroid=ruma.centroid,
+                radius=radius
+            )
+            
+            save_alert(
+                alert_type='nueva_ruma',
+                ruma_data=ruma_data,
+                frame=None,  # No enviar frame para nueva ruma
+                frame_count=frame_count,
+                fps=fps,
+                camera_sn=self.camera_sn,
+                enterprise='alma',
+                api_url=self.api_url,
+                send=False,
+                save=True,
+                ruma_summary=self.tracker.ruma_summary,
+                frame_shape=frame.shape,
+                detection_zone=self.detection_zone
+            )
+            
+            # Limpiar flag después de procesar
+            self.tracker.new_ruma_created = None
 
         # Guardar alertas solo cuando se activan (cambio de False a True)
         for alert_type, current_state in current_alerts.items():
@@ -263,19 +280,47 @@ class RumaMonitor:
                     'new': 'nueva_ruma'
                 }
 
+                # Crear RumaInfo según el tipo de alerta
                 ruma_data = None
-                if len(self.tracker.rumas) > 0:
-                    try:
-                        ruma = list(self.tracker.rumas.values())[-1]
+                
+                if alert_type == 'movement':
+                    # Movimiento en zona: todos los campos None
+                    ruma_data = RumaInfo(
+                        id=None,
+                        percent=None,
+                        centroid=None,
+                        radius=None
+                    )
+                    
+                elif alert_type == 'interaction':
+                    # Interacción con ruma: todos los campos None
+                    ruma_data = RumaInfo(
+                        id=None,
+                        percent=None,
+                        centroid=None,
+                        radius=None
+                    )
+                    
+                elif alert_type == 'variation':
+                    # Variación de ruma: datos reales de la ruma que tuvo variación
+                    if ruma_with_variation is not None:
+                        # Obtener radio desde el resumen
+                        radius = self.tracker.ruma_summary.get(ruma_with_variation.id, {}).get('radius', 0.0)
+                        
                         ruma_data = RumaInfo(
-                            id=getattr(ruma, 'id', None),
-                            percent=getattr(ruma, 'percentage', None),
-                            centroid=getattr(ruma, 'centroid', None),
-                            radius=getattr(ruma, 'radius', None)
+                            id=ruma_with_variation.id,
+                            percent=ruma_with_variation.last_stable_percentage,
+                            centroid=ruma_with_variation.centroid,
+                            radius=radius
                         )
-                    except Exception as e:
-                        print(f" No se pudo crear RumaInfo: {e}")
-                        ruma_data = None
+                    else:
+                        # Fallback si no se pudo identificar la ruma específica
+                        ruma_data = RumaInfo(
+                            id=None,
+                            percent=None,
+                            centroid=None,
+                            radius=None
+                        )
 
                 if ruma_data is not None:
                     save_alert(
@@ -294,12 +339,10 @@ class RumaMonitor:
                         detection_zone=self.detection_zone
                     )
 
-
         # Actualizar estados
         self.object_in_zone = object_in_zone
         self.object_interacting = object_interacting
         self.ruma_variation = ruma_variation
-        self.new_variation = new_variation
+        self.new_variation = False  # Reset después de procesar
 
         return frame_with_drawings
-
