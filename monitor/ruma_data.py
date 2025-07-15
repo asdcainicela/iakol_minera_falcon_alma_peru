@@ -22,6 +22,10 @@ class RumaData:
     enterprise: Optional[str] = field(default=None)
     radius: float = field(init=False)
 
+    # Nuevos campos homográficos
+    centroid_homographic: Optional[Tuple[float, float]] = field(default=None)
+    radius_homographic: Optional[float] = field(default=None)
+
     def __post_init__(self):
         self.current_area = self.initial_area
         self.label_position = (self.centroid[0] - 30, self.centroid[1] - 10)

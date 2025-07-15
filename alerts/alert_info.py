@@ -8,6 +8,8 @@ class RumaInfo:
     percent: float
     centroid: Tuple[int, int]
     radius: float
+    centroid_homographic: Optional[Tuple[float, float]] = None
+    radius_homographic: Optional[float] = None
 
 @dataclass
 class AlertContext:

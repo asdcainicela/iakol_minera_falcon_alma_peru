@@ -188,7 +188,7 @@ class RumaMonitor:
 
                         else:
                             # Posible nueva ruma - agregar como candidata
-                            self.tracker.add_candidate_ruma(mask, centroid, frame_count, frame.shape)
+                            self.tracker.add_candidate_ruma(mask, centroid, frame_count, frame.shape, self.transformer)
 
         # Limpiar candidatas antiguas (más de 100 frames sin confirmación)
         self.tracker.clean_old_candidates(frame_count)
@@ -220,7 +220,7 @@ class RumaMonitor:
             draw_ruma_variation,
             TEXT_COLOR_RED=self.TEXT_COLOR_RED,
             TEXT_COLOR_GREEN=self.TEXT_COLOR_GREEN
-            )
+        )
 
         # Guardar alertas si hay cambios de estado
         current_alerts = {
@@ -241,22 +241,20 @@ class RumaMonitor:
         if self.tracker.new_ruma_created:
             ruma_id, frame_shape = self.tracker.new_ruma_created
             ruma = self.tracker.rumas[ruma_id]
-            
-            # Obtener radio desde el resumen
-            radius = self.tracker.ruma_summary[ruma_id]['radius']
-            
-            # Alerta de nueva ruma
+
             ruma_data = RumaInfo(
                 id=ruma.id,
-                percent=100.0,  # Nueva ruma siempre es 100%
+                percent=100.0,
                 centroid=ruma.centroid,
-                radius=radius
+                radius=ruma.radius,
+                centroid_homographic=ruma.centroid_homographic,
+                radius_homographic=ruma.radius_homographic
             )
-            
+
             save_alert(
                 alert_type='nueva_ruma',
                 ruma_data=ruma_data,
-                frame=None,  # No enviar frame para nueva ruma
+                frame=None,
                 frame_count=frame_count,
                 fps=fps,
                 camera_sn=self.camera_sn,
@@ -266,14 +264,12 @@ class RumaMonitor:
                 save=True,
                 ruma_summary=self.tracker.ruma_summary,
                 frame_shape=frame.shape,
-                detection_zone=self.detection_zone,
-                transformer=self.transformer
+                detection_zone=self.detection_zone
             )
-            
-            # Limpiar flag después de procesar
+
             self.tracker.new_ruma_created = None
 
-        # Guardar alertas solo cuando se activan (cambio de False a True)
+        # Guardar alertas cuando se activan (cambio de False a True)
         for alert_type, current_state in current_alerts.items():
             if current_state and not previous_alerts[alert_type]:
                 alert_names = {
@@ -283,46 +279,36 @@ class RumaMonitor:
                     'new': 'nueva_ruma'
                 }
 
-                # Crear RumaInfo según el tipo de alerta
                 ruma_data = None
-                
-                if alert_type == 'movement':
-                    # Movimiento en zona: todos los campos None
+
+                if alert_type in ['movement', 'interaction']:
                     ruma_data = RumaInfo(
                         id=None,
                         percent=None,
                         centroid=None,
-                        radius=None
+                        radius=None,
+                        centroid_homographic=None,
+                        radius_homographic=None
                     )
-                    
-                elif alert_type == 'interaction':
-                    # Interacción con ruma: todos los campos None
-                    ruma_data = RumaInfo(
-                        id=None,
-                        percent=None,
-                        centroid=None,
-                        radius=None
-                    )
-                    
+
                 elif alert_type == 'variation':
-                    # Variación de ruma: datos reales de la ruma que tuvo variación
                     if ruma_with_variation is not None:
-                        # Obtener radio desde el resumen
-                        radius = self.tracker.ruma_summary.get(ruma_with_variation.id, {}).get('radius', 0.0)
-                        
                         ruma_data = RumaInfo(
                             id=ruma_with_variation.id,
                             percent=ruma_with_variation.last_stable_percentage,
                             centroid=ruma_with_variation.centroid,
-                            radius=radius
+                            radius=ruma_with_variation.radius,
+                            centroid_homographic=ruma_with_variation.centroid_homographic,
+                            radius_homographic=ruma_with_variation.radius_homographic
                         )
                     else:
-                        # Fallback si no se pudo identificar la ruma específica
                         ruma_data = RumaInfo(
                             id=None,
                             percent=None,
                             centroid=None,
-                            radius=None
+                            radius=None,
+                            centroid_homographic=None,
+                            radius_homographic=None
                         )
 
                 if ruma_data is not None:
@@ -339,8 +325,7 @@ class RumaMonitor:
                         save=True,
                         ruma_summary=self.tracker.ruma_summary,
                         frame_shape=frame.shape,
-                        detection_zone=self.detection_zone,
-                        transformer=self.transformer
+                        detection_zone=self.detection_zone
                     )
 
         # Actualizar estados

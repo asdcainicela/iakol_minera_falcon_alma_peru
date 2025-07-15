@@ -17,8 +17,7 @@ def save_alert(
     save: bool = True,
     ruma_summary: Optional[dict] = None,
     frame_shape: Optional[Tuple[int, int]] = None,
-    detection_zone: Optional[List[Tuple[int, int]]] = None,
-    transformer: Optional[object] = None
+    detection_zone: Optional[List[Tuple[int, int]]] = None
 ) -> bool:
     """
     Orquesta el envío y guardado de una alerta.
@@ -52,8 +51,7 @@ def save_alert(
             save_alert_local(
                 alert_type=alert_type,
                 ruma_data=ruma_data,
-                context=context,
-                transformer=transformer
+                context=context
             )
 
         return True
