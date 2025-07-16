@@ -15,8 +15,21 @@ def save_alert_local(
 ):
     """Guarda localmente una alerta con imagen y metadatos"""
     timestamp = datetime.now()
-    base_path = generar_folder_fecha("alerts_save", etiqueta="local")
-    print(" Save alert local ejecutándose")
+    #base_path = generar_folder_fecha("alerts_save", etiqueta="local")
+    #print(" Save alert local ejecutándose")
+    match int(context.camera_sn.split('-')[-1]):
+        case 1:
+            ruta_img ="homography/img/Mapa1_nuevo.png"
+            base_path = generar_folder_fecha("alerts_save", etiqueta="cam1_local")
+        case 2:
+            ruta_img ="homography/img/Mapa2_nuevo.png"
+            base_path = generar_folder_fecha("alerts_save", etiqueta="cam2_local")
+        case 3:
+            ruta_img ="homography/img/Mapa3_nuevo.png"
+            base_path = generar_folder_fecha("alerts_save", etiqueta="cam3_local")
+        case _:
+            ruta_img ="homography/img/Mapa1_nuevo.png"
+            base_path = generar_folder_fecha("alerts_save", etiqueta="cam1_local")
 
     # Calcular tiempo del video
     video_time_seconds = context.frame_count / context.fps
@@ -29,7 +42,7 @@ def save_alert_local(
             # Agrega datos transformados al resumen si aún no están
             context.ruma_summary[ruma_data.id]['centroid_homographic'] = centroid
             context.ruma_summary[ruma_data.id]['radius_homographic'] = radius
-
+            
             save_ruma_summary_image_homography(
                 ruma_summary=context.ruma_summary,
                 frame_shape=context.frame_shape,
@@ -37,7 +50,7 @@ def save_alert_local(
                 timestamp=timestamp,
                 frame_count=context.frame_count,
                 detection_zone=context.detection_zone,
-                map_image_path="homography/img/Mapa1_nuevo.png"
+                map_image_path=ruta_img
             )
 
             save_ruma_summary_image(
@@ -65,7 +78,7 @@ def save_alert_local(
         "frame_number": context.frame_count,
         "video_time_seconds": video_time_seconds,
     }
-    print(f" Metadata de alerta: {metadata}")
+    #print(f" Metadata de alerta: {metadata}")
 
     # Nombres de archivo
     base_filename = f"{timestamp.strftime('%H-%M-%S')}_{alert_type}_{context.frame_count}"
@@ -77,12 +90,7 @@ def save_alert_local(
         json.dump(metadata, f, indent=2)
     cv2.imwrite(str(image_path), context.frame)
 
-    # Guardar resumen visual si hay nueva ruma
-    """
-    if context.ruma_summary and context.frame_shape is not None:
-        
-    """
-    print(f" Alerta local guardada: {alert_type} - {timestamp.strftime('%H:%M:%S')}")
+    #print(f" Alerta local guardada: {alert_type} - {timestamp.strftime('%H:%M:%S')}")
 
 
 def save_ruma_summary_image(
@@ -114,7 +122,7 @@ def save_ruma_summary_image(
     filename = f"{timestamp.strftime('%H-%M-%S')}_ruma_summary_{frame_count}.jpg"
     save_path = base_path / filename
     cv2.imwrite(str(save_path), summary_image)
-    print(f"📄 Imagen resumen de rumas guardada en: {save_path}")
+    #print(f" Imagen resumen de rumas guardada en: {save_path}")
 
 def save_ruma_summary_image_homography(
     ruma_summary,
@@ -153,4 +161,4 @@ def save_ruma_summary_image_homography(
     filename = f"{timestamp.strftime('%H-%M-%S')}_ruma_summary_homography_{frame_count}.jpg"
     save_path = base_path / filename
     cv2.imwrite(str(save_path), mapa)
-    print(f"📄 Imagen homográfica de rumas guardada en: {save_path}")
+    #print(f" Imagen homográfica de rumas guardada en: {save_path}")

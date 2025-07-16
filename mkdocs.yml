@@ -58,8 +58,8 @@ google_analytics:
 cameras:
   1:
     #input_video: "rtsp://admin:Panto2025@192.168.0.109:554/cam/realmonitor?channel=1&subtype=0"
-    input_video: "video/video_cam3_0422.mp4"  
-    output_video: "camera_1_processed.mp4"
+    input_video: "video/video_camara1_0_4__22.mp4"  
+    output_video: "video/camera_1_processed.mp4"
     camera_sn: "DS-7104NI-Q1-1"
     save_data: "data/camera_1"
     polygons:
@@ -68,19 +68,22 @@ cameras:
     output_homography: [[837,72], [324,73], [339,692], [575,363], [758,390]]
   2:
     #input_video: "rtsp://admin:Panto2025@192.168.0.109:554/cam/realmonitor?channel=2&subtype=0"
-    input_video: "camera_1_video.mp4"
-    output_video: "camera_2_processed.mp4"
+    input_video: "video/video_camara2_0_51.mp4"
+    output_video: "video/camera_2_processed.mp4"
     camera_sn: "DS-7104NI-Q1-2"
     save_data: "data/camera_2"
     polygons:
       - [2, [[1740,533],[1788,1075],[741,1074],[433,591],[400,480],[536,442],[1008,365],[1061,398],[1128,389],[1214,431],[1369,397]]]  
+    input_homography: [[1788, 1070],[1740, 534],[1203, 330],[390, 471],[735, 1070]]
+    output_homography: [[171, 437],[351, 674],[808, 648],[851, 202],[295, 90]]
 
   3:
     #input_video: "rtsp://admin:Panto2025@192.168.0.109:554/cam/realmonitor?channel=3&subtype=1"
-    input_video: "video2.mp4"
-    output_video: "camera_3_processed.mp4"
+    input_video: "video/video_camara3_0_100.mp4"
+    output_video: "video/camera_3_processed.mp4"
     camera_sn: "DS-7104NI-Q1-3"
     save_data: "data/camera_3"
     polygons:
       - [1, [[20, 691], [18, 779], [414, 881], [709, 759],[1675, 1060], [1902, 890], [1902, 667], [704, 416]]] # Zona de mesas externas 3
-      
+    input_homography: [[710,760], [1669,1053], [1902,883], [1900,669], [700,414], [18,690], [18,776], [441,880]]
+    output_homography: [[344,187], [11,303], [149,676], [433,763], [1011,568], [487,12], [394,5], [277,77]]
