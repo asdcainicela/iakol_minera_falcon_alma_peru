@@ -6,6 +6,8 @@ from datetime import datetime
 from typing import Tuple, Optional
 
 from alerts.alert_info import RumaInfo, AlertContext
+from alerts.alert_utils import save_ruma_summary_image, save_ruma_summary_image_homography
+
 from utils.paths import generar_folder_fecha
 
 def save_alert_local(
@@ -19,16 +21,16 @@ def save_alert_local(
     #print(" Save alert local ejecutándose")
     match int(context.camera_sn.split('-')[-1]):
         case 1:
-            ruta_img ="homography/img/Mapa1_nuevo.png"
+            ruta_img ="ref/homography/img_map/Mapa1_nuevo.png"
             base_path = generar_folder_fecha("alerts_save", etiqueta="cam1_local")
         case 2:
-            ruta_img ="homography/img/Mapa2_nuevo.png"
+            ruta_img ="ref/homography/img_map/Mapa2_nuevo.png"
             base_path = generar_folder_fecha("alerts_save", etiqueta="cam2_local")
         case 3:
-            ruta_img ="homography/img/Mapa3_nuevo.png"
+            ruta_img ="ref/homography/img_map/Mapa3_nuevo.png"
             base_path = generar_folder_fecha("alerts_save", etiqueta="cam3_local")
         case _:
-            ruta_img ="homography/img/Mapa1_nuevo.png"
+            ruta_img ="ref/homography/img_map/Mapa1_nuevo.png"
             base_path = generar_folder_fecha("alerts_save", etiqueta="cam1_local")
 
     # Calcular tiempo del video
@@ -45,10 +47,8 @@ def save_alert_local(
             
             save_ruma_summary_image_homography(
                 ruma_summary=context.ruma_summary,
-                frame_shape=context.frame_shape,
                 base_path=base_path,
                 timestamp=timestamp,
-                frame_count=context.frame_count,
                 detection_zone=context.detection_zone,
                 map_image_path=ruta_img
             )
@@ -92,73 +92,3 @@ def save_alert_local(
 
     #print(f" Alerta local guardada: {alert_type} - {timestamp.strftime('%H:%M:%S')}")
 
-
-def save_ruma_summary_image(
-    ruma_summary,
-    frame_shape,
-    base_path,
-    timestamp,
-    frame_count,
-    detection_zone=None
-    ):
-    """Guarda imagen resumen de rumas (puntos y radios)"""
-    summary_image = np.ones(frame_shape, dtype=np.uint8) * 255  # fondo blanco
-
-    # Dibujar zona de detección si existe
-    if detection_zone is not None:
-        pts = np.array(detection_zone).reshape((-1, 1, 2))
-        cv2.polylines(summary_image, [pts], isClosed=True, color=(200, 200, 200), thickness=2)
-
-    for ruma_id, info in ruma_summary.items():
-        centroid = info['centroid']
-        radius = int(info['radius'])
-
-        cv2.circle(summary_image, centroid, radius, (0, 0, 255), 2)  # círculo rojo
-        cv2.circle(summary_image, centroid, 3, (0, 0, 0), -1)        # centroide negro
-
-        label_pos = (centroid[0] + 10, centroid[1] - 10)
-        cv2.putText(summary_image, f"R{ruma_id}", label_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
-
-    filename = f"{timestamp.strftime('%H-%M-%S')}_ruma_summary_{frame_count}.jpg"
-    save_path = base_path / filename
-    cv2.imwrite(str(save_path), summary_image)
-    #print(f" Imagen resumen de rumas guardada en: {save_path}")
-
-def save_ruma_summary_image_homography(
-    ruma_summary,
-    frame_shape,
-    base_path,
-    timestamp,
-    frame_count,
-    detection_zone=None,
-    map_image_path: str = "homography/img/Mapa1_nuevo.png",
-):
-    """Dibuja todas las rumas transformadas por homografía sobre el mapa y guarda la imagen."""
-    mapa = cv2.imread(map_image_path)
-    if mapa is None:
-        print(f"[ERROR] No se pudo cargar la imagen: {map_image_path}")
-        return
-
-    # Dibujar todas las rumas transformadas
-    for ruma_id, info in ruma_summary.items():
-        centroid_h = info.get('centroid_homographic')
-        radius_h = info.get('radius_homographic')
-
-        if centroid_h is None or radius_h is None:
-            continue  # Saltar si falta información
-
-        # Asegurar valores válidos
-        cx, cy = int(round(centroid_h[0])), int(round(centroid_h[1]))
-        radius = int(round(radius_h))
-
-        cv2.circle(mapa, (cx, cy), radius, (0, 0, 255), 2)  # círculo rojo
-        cv2.circle(mapa, (cx, cy), 3, (0, 0, 0), -1)        # centroide negro
-
-        label_pos = (cx + 10, cy - 10)
-        cv2.putText(mapa, f"R{ruma_id}", label_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
-
-    # Guardar imagen
-    filename = f"{timestamp.strftime('%H-%M-%S')}_ruma_summary_homography_{frame_count}.jpg"
-    save_path = base_path / filename
-    cv2.imwrite(str(save_path), mapa)
-    #print(f" Imagen homográfica de rumas guardada en: {save_path}")
