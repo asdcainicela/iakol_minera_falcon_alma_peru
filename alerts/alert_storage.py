@@ -16,7 +16,7 @@ def save_alert_local(
     """Guarda localmente una alerta con imagen y metadatos"""
     timestamp = datetime.now()
     base_path = generar_folder_fecha("alerts_save", etiqueta="local")
-    print(" Save alert local ejecutándose")
+    #print(" Save alert local ejecutándose")
 
     # Calcular tiempo del video
     video_time_seconds = context.frame_count / context.fps
@@ -65,7 +65,7 @@ def save_alert_local(
         "frame_number": context.frame_count,
         "video_time_seconds": video_time_seconds,
     }
-    print(f" Metadata de alerta: {metadata}")
+    #print(f" Metadata de alerta: {metadata}")
 
     # Nombres de archivo
     base_filename = f"{timestamp.strftime('%H-%M-%S')}_{alert_type}_{context.frame_count}"
@@ -82,7 +82,7 @@ def save_alert_local(
     if context.ruma_summary and context.frame_shape is not None:
         
     """
-    print(f" Alerta local guardada: {alert_type} - {timestamp.strftime('%H:%M:%S')}")
+    #print(f" Alerta local guardada: {alert_type} - {timestamp.strftime('%H:%M:%S')}")
 
 
 def save_ruma_summary_image(
@@ -114,7 +114,7 @@ def save_ruma_summary_image(
     filename = f"{timestamp.strftime('%H-%M-%S')}_ruma_summary_{frame_count}.jpg"
     save_path = base_path / filename
     cv2.imwrite(str(save_path), summary_image)
-    print(f"📄 Imagen resumen de rumas guardada en: {save_path}")
+    #print(f" Imagen resumen de rumas guardada en: {save_path}")
 
 def save_ruma_summary_image_homography(
     ruma_summary,
@@ -153,4 +153,4 @@ def save_ruma_summary_image_homography(
     filename = f"{timestamp.strftime('%H-%M-%S')}_ruma_summary_homography_{frame_count}.jpg"
     save_path = base_path / filename
     cv2.imwrite(str(save_path), mapa)
-    print(f"📄 Imagen homográfica de rumas guardada en: {save_path}")
+    #print(f" Imagen homográfica de rumas guardada en: {save_path}")

@@ -33,7 +33,7 @@ class RumaMonitor:
         self.model_seg = YOLO(model_seg_path)
         self.detection_zone = detection_zone
         self.camera_sn = camera_sn
-        self.enterprise = None # Added enterprise attribute
+        self.enterprise = 'alma' # Added enterprise attribute
 
         # Tracking de rumas
         self.tracker = RumaTracker()
@@ -54,6 +54,10 @@ class RumaMonitor:
         self.TEXT_COLOR_RED = (0, 0, 255)
 
         self.transformer = transformer
+
+        # Envio de datos
+        self.send = True # Envio de datos a la nube
+        self.save = True # Guardado de datos local
 
     def process_detections(self, frame, frame_count):
         """Procesa las detecciones de personas y vehículos"""
@@ -258,10 +262,10 @@ class RumaMonitor:
                 frame_count=frame_count,
                 fps=fps,
                 camera_sn=self.camera_sn,
-                enterprise='alma',
+                enterprise=self.enterprise,
                 api_url=self.api_url,
-                send=False,
-                save=True,
+                send=self.send,
+                save=self.save,
                 ruma_summary=self.tracker.ruma_summary,
                 frame_shape=frame.shape,
                 detection_zone=self.detection_zone
@@ -319,10 +323,10 @@ class RumaMonitor:
                         frame_count=frame_count,
                         fps=fps,
                         camera_sn=self.camera_sn,
-                        enterprise='alma',
+                        enterprise=self.enterprise,
                         api_url=self.api_url,
-                        send=False,
-                        save=True,
+                        send=self.send,
+                        save=self.save,
                         ruma_summary=self.tracker.ruma_summary,
                         frame_shape=frame.shape,
                         detection_zone=self.detection_zone

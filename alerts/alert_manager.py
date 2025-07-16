@@ -25,29 +25,26 @@ def save_alert(
     False si hay errores.
     """
     try:
+        
+        context = AlertContext(
+            frame=frame,
+            frame_count=frame_count,
+            fps=fps,
+            camera_sn=camera_sn,
+            enterprise=enterprise,
+            ruma_summary=ruma_summary,
+            frame_shape=frame_shape,
+            detection_zone=detection_zone
+        )
+
         if send:
             prepare_and_send_alert(
                 alert_type=alert_type,
-                frame_count=frame_count,
-                fps=fps,
-                camera_sn=camera_sn,
-                enterprise=enterprise,
+                ruma_data=ruma_data,
+                context=context,
                 api_url=api_url
             )
-
         if save:
-
-            context = AlertContext(
-                frame=frame,
-                frame_count=frame_count,
-                fps=fps,
-                camera_sn=camera_sn,
-                enterprise=enterprise,
-                ruma_summary=ruma_summary,
-                frame_shape=frame_shape,
-                detection_zone=detection_zone
-            )
-
             save_alert_local(
                 alert_type=alert_type,
                 ruma_data=ruma_data,
