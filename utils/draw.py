@@ -39,14 +39,14 @@ def draw_zone_and_status(frame, detection_zone, draw_object_in_zone,
         color=zone_color, font_scale=1.5
     )
 
-    interact_text = "Interacción con las rumas" if object_interacting else "Sin interacciones"
+    interact_text = "Interaccion con las rumas" if object_interacting else "Sin interacciones"
     interact_color = TEXT_COLOR_RED if object_interacting else TEXT_COLOR_GREEN
     frame = put_text_with_background(
         frame, interact_text, (width - 650, text_y_start + 60),
         color=interact_color, font_scale=1.5
     )
 
-    variation_text = "Variación en las rumas" if draw_ruma_variation else "Rumas en reposo"
+    variation_text = "Variacion en las rumas" if draw_ruma_variation else "Rumas en reposo"
     variation_color = TEXT_COLOR_RED if draw_ruma_variation else TEXT_COLOR_GREEN
     frame = put_text_with_background(
         frame, variation_text, (width - 650, text_y_start + 120),
