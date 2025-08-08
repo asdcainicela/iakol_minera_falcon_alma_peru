@@ -50,7 +50,7 @@ def save_alert_local(
                 ruma_summary=context.ruma_summary,
                 base_path=base_path,
                 timestamp=timestamp,
-                frame_count=context.detection_zone,
+                frame_count=context.frame_count, #context.detection_zone,
                 map_image_path=ruta_img
             )
 
