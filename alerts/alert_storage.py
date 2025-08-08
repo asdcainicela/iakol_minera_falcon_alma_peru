@@ -19,19 +19,20 @@ def save_alert_local(
     timestamp = datetime.now()
     #base_path = generar_folder_fecha("alerts_save", etiqueta="local")
     #print(" Save alert local ejecutándose")
-    match int(context.camera_sn.split('-')[-1]):
-        case 1:
-            ruta_img ="ref/homography/img_map/Mapa1_nuevo.png"
-            base_path = generar_folder_fecha("alerts_save", etiqueta="cam1_local")
-        case 2:
-            ruta_img ="ref/homography/img_map/Mapa2_nuevo.png"
-            base_path = generar_folder_fecha("alerts_save", etiqueta="cam2_local")
-        case 3:
-            ruta_img ="ref/homography/img_map/Mapa3_nuevo.png"
-            base_path = generar_folder_fecha("alerts_save", etiqueta="cam3_local")
-        case _:
-            ruta_img ="ref/homography/img_map/Mapa1_nuevo.png"
-            base_path = generar_folder_fecha("alerts_save", etiqueta="cam1_local")
+    camera_id = int(context.camera_sn.split('-')[-1])
+
+    if camera_id == 1:
+        ruta_img = "ref/homography/img_map/Mapa1_nuevo.png"
+        base_path = generar_folder_fecha("alerts_save", etiqueta="cam1_local")
+    elif camera_id == 2:
+        ruta_img = "ref/homography/img_map/Mapa2_nuevo.png"
+        base_path = generar_folder_fecha("alerts_save", etiqueta="cam2_local")
+    elif camera_id == 3:
+        ruta_img = "ref/homography/img_map/Mapa3_nuevo.png"
+        base_path = generar_folder_fecha("alerts_save", etiqueta="cam3_local")
+    else:
+        ruta_img = "ref/homography/img_map/Mapa1_nuevo.png"
+        base_path = generar_folder_fecha("alerts_save", etiqueta="cam1_local")
 
     # Calcular tiempo del video
     video_time_seconds = context.frame_count / context.fps
@@ -86,9 +87,20 @@ def save_alert_local(
     image_path = base_path / f"{base_filename}.jpg"
 
     # Guardar JSON y frame
+    #with open(json_path, 'w') as f:
+    #    json.dump(metadata, f, indent=2)
+    #cv2.imwrite(str(image_path), context.frame)
+    
+    # Guardar JSON
     with open(json_path, 'w') as f:
         json.dump(metadata, f, indent=2)
-    cv2.imwrite(str(image_path), context.frame)
+
+    # Guardar imagen solo si el frame es válido
+    if context.frame is not None and context.frame.size != 0:
+        cv2.imwrite(str(image_path), context.frame)
+    else:
+        print(f"[Error] El frame está vacío. No se pudo guardar la imagen en: {image_path}")
+
 
     #print(f" Alerta local guardada: {alert_type} - {timestamp.strftime('%H:%M:%S')}")
 

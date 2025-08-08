@@ -1,6 +1,6 @@
 from pathlib import Path
 from datetime import datetime
-
+from typing import Union
 
 def setup_alerts_folder(base_path="alerts_save") -> Path: # no usado 
     """
@@ -38,7 +38,8 @@ def generar_output_video(video_path: str) -> Path:
 
     return output_folder / output_filename
 
-def generar_folder_fecha(base_path: str | Path, etiqueta: str = "local") -> Path:
+def generar_folder_fecha(base_path: Union[str, Path], etiqueta: str = "local") -> Path:
+
     """
     Crea una carpeta dentro de `base_path` con la fecha actual y una etiqueta opcional.
 
