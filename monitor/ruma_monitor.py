@@ -258,7 +258,7 @@ class RumaMonitor:
             save_alert(
                 alert_type='nueva_ruma',
                 ruma_data=ruma_data,
-                frame=None,
+                frame=frame_with_drawings, #None
                 frame_count=frame_count,
                 fps=fps,
                 camera_sn=self.camera_sn,

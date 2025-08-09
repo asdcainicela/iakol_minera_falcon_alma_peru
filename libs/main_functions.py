@@ -38,8 +38,8 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     print(f"Video: {width}x{height} @ {fps:.2f} FPS")
 
-    #out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height)) #v 3.1o python
-    out = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+    #out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height)) #v 3.10 python
+    out = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height)) #3.08 python
 
     start_frame = int(start_time_sec * fps)
     end_frame = int(end_time_sec * fps)
