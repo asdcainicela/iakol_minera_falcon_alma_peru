@@ -55,3 +55,65 @@ DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:37:11,,,None,
 DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:37:17,,,None,
 DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:37:19,,,None,
 DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:37:22,,,None,
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:42:55,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:42:59,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:43:00,4,100.0,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:43:00,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:43:00,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:43:03,4,99.87066648750336,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:43:03,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:43:03,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:43:04,4,99.73965331900027,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:43:05,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:43:05,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:43:05,4,99.67414673474873,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:43:07,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:43:07,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:43:08,4,99.4440338618651,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:43:11,5,99.30537179147922,"[601.37, 382.34]",44.16
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:43:58,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:43:58,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:43:59,5,100,"[601.37, 382.34]",44.16
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:44:00,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:44:00,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:44:01,4,99.03083848427842,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:44:08,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:44:08,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:44:12,5,100,"[601.37, 382.34]",44.16
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:44:13,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:44:13,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:44:15,4,100,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:44:16,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:44:16,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:44:17,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:44:21,5,100,"[601.37, 382.34]",44.16
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:44:23,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:44:23,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:44:25,4,100,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:44:25,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:44:25,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:44:26,4,100,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:44:28,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:44:28,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:44:28,6,99.96117510029767,"[562.16, 290.72]",48.29
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:44:33,4,99.8521902714324,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:44:34,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:44:34,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:44:34,4,99.86898683149691,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:44:35,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:44:35,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:44:40,4,99.75309056705187,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:44:45,,,None,
+DS-7104NI-Q1-1,alma,interaccion_rumas,2025-08-11 18:44:45,,,None,
+DS-7104NI-Q1-1,alma,variacion_rumas,2025-08-11 18:44:56,4,99.74973125503897,"[708.44, 314.05]",50.35
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:45:12,,,None,
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:45:29,,,None,
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:45:31,,,None,
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:45:35,,,None,
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:46:26,,,None,
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:46:30,,,None,
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:46:32,,,None,
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:46:34,,,None,
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:46:35,,,None,
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:46:40,,,None,
+DS-7104NI-Q1-1,alma,movimiento_zona,2025-08-11 18:46:46,,,None,
