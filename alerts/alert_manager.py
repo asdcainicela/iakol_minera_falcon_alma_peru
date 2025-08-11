@@ -17,15 +17,21 @@ def save_alert(
     save: bool = True,
     ruma_summary: Optional[dict] = None,
     frame_shape: Optional[Tuple[int, int]] = None,
-    detection_zone: Optional[List[Tuple[int, int]]] = None
+    detection_zone: Optional[List[Tuple[int, int]]] = None,
+    # Nuevos parámetros para CSV
+    save_csv: bool = True,  # Por defecto True para guardar CSV
+    csv_file: str = "alerts_data.csv"
 ) -> bool:
     """
     Orquesta el envío y guardado de una alerta.
-    Retorna True si todo se ejecuta correctamente,
-    False si hay errores.
+    
+    Args:
+        save_csv: Si True, guarda también en CSV
+        csv_file: Nombre del archivo CSV
+    
+    Retorna True si todo se ejecuta correctamente, False si hay errores.
     """
     try:
-        
         context = AlertContext(
             frame=frame,
             frame_count=frame_count,
@@ -44,11 +50,14 @@ def save_alert(
                 context=context,
                 api_url=api_url
             )
+            
         if save:
             save_alert_local(
                 alert_type=alert_type,
                 ruma_data=ruma_data,
-                context=context
+                context=context,
+                save_csv=save_csv,  # Nuevo parámetro
+                csv_file=csv_file   # Nuevo parámetro
             )
 
         return True

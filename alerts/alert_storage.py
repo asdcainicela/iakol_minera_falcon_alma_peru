@@ -1,4 +1,6 @@
 import json
+import csv
+import os
 import cv2
 import numpy as np
 from pathlib import Path
@@ -10,15 +12,51 @@ from alerts.alert_utils import save_ruma_summary_image, save_ruma_summary_image_
 
 from utils.paths import generar_folder_fecha
 
+def save_to_csv(metadata: dict, csv_file: str = "alerts_data.csv"):
+    """
+    Guarda el diccionario metadata en un archivo CSV GLOBAL.
+    Si el archivo existe, agrega los datos sin borrar los anteriores.
+    El CSV se guarda en la carpeta 'alerts_save' (no en subcarpetas de cámaras).
+    """
+    try:
+        # Crear carpeta alerts_save si no existe
+        alerts_folder = Path("alerts_save")
+        alerts_folder.mkdir(exist_ok=True)
+        
+        # Ruta completa del CSV (siempre en alerts_save/)
+        csv_path = alerts_folder / csv_file
+        
+        # Verificar si el archivo existe
+        file_exists = csv_path.exists()
+        
+        # Abrir archivo en modo append si existe, sino en modo write
+        mode = 'a' if file_exists else 'w'
+        
+        with open(csv_path, mode, newline='', encoding='utf-8') as file:
+            fieldnames = metadata.keys()
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            
+            # Escribir header solo si es un archivo nuevo
+            if not file_exists:
+                writer.writeheader()
+            
+            # Escribir la fila de datos
+            writer.writerow(metadata)
+            
+        print(f" Metadata guardada en CSV global: {csv_path}")
+        
+    except Exception as e:
+        print(f" Error al guardar en CSV: {e}")
+
 def save_alert_local(
     alert_type: str,
     ruma_data: RumaInfo = None,
-    context: AlertContext = None
+    context: AlertContext = None,
+    save_csv: bool = True,  # Nuevo parámetro
+    csv_file: str = "alerts_data.csv"  # Nuevo parámetro
 ):
     """Guarda localmente una alerta con imagen y metadatos"""
     timestamp = datetime.now()
-    #base_path = generar_folder_fecha("alerts_save", etiqueta="local")
-    #print(" Save alert local ejecutándose")
     camera_id = int(context.camera_sn.split('-')[-1])
 
     if camera_id == 1:
@@ -50,7 +88,7 @@ def save_alert_local(
                 ruma_summary=context.ruma_summary,
                 base_path=base_path,
                 timestamp=timestamp,
-                frame_count=context.frame_count, #context.detection_zone,
+                frame_count=context.frame_count,
                 map_image_path=ruta_img
             )
 
@@ -63,8 +101,8 @@ def save_alert_local(
                 detection_zone=context.detection_zone
             )
 
-    # Metadata de la alerta
-    metadata = {
+    # Metadata de la alerta (formato del storage - más completo)
+    metadata_local = {
         "cameraSN": context.camera_sn,
         "enterprise": context.enterprise,
         "alert_type": alert_type,
@@ -79,28 +117,33 @@ def save_alert_local(
         "frame_number": context.frame_count,
         "video_time_seconds": video_time_seconds,
     }
-    #print(f" Metadata de alerta: {metadata}")
+
+    # Metadata para CSV (formato del sender - más simple)
+    if save_csv:
+        metadata_csv = {
+            "cameraSN": context.camera_sn,
+            "enterprise": context.enterprise,
+            "alert_type": alert_type,
+            "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+            "id": ruma_data.id,
+            "percent": ruma_data.percent,
+            "coords": str(ruma_data.centroid_homographic),  # Convertir a string para CSV
+            "radius": ruma_data.radius_homographic,
+            "frame": None,
+        }
+        save_to_csv(metadata_csv, csv_file)
 
     # Nombres de archivo
     base_filename = f"{timestamp.strftime('%H-%M-%S')}_{alert_type}_{context.frame_count}"
     json_path = base_path / f"{base_filename}.json"
     image_path = base_path / f"{base_filename}.jpg"
 
-    # Guardar JSON y frame
-    #with open(json_path, 'w') as f:
-    #    json.dump(metadata, f, indent=2)
-    #cv2.imwrite(str(image_path), context.frame)
-    
     # Guardar JSON
     with open(json_path, 'w') as f:
-        json.dump(metadata, f, indent=2)
+        json.dump(metadata_local, f, indent=2)
 
     # Guardar imagen solo si el frame es válido
     if context.frame is not None and context.frame.size != 0:
         cv2.imwrite(str(image_path), context.frame)
     else:
         print(f"[Error] El frame está vacío. No se pudo guardar la imagen en: {image_path}")
-
-
-    #print(f" Alerta local guardada: {alert_type} - {timestamp.strftime('%H:%M:%S')}")
-
