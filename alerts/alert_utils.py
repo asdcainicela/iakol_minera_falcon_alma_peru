@@ -29,7 +29,11 @@ def save_ruma_summary_image(
 
     filename = f"{timestamp.strftime('%H-%M-%S')}_ruma_summary_{frame_count}.jpg"
     save_path = base_path / filename
-    cv2.imwrite(str(save_path), summary_image)
+    if summary_image is not None :
+        cv2.imwrite(str(save_path), summary_image)
+    else:
+        print(f"[Error] El frame está vacío. No se pudo guardar la imagen en: {save_path}")
+    
     #print(f" Imagen resumen de rumas guardada en: {save_path}")
 
 def save_ruma_summary_image_homography(
@@ -66,5 +70,9 @@ def save_ruma_summary_image_homography(
     # Guardar imagen
     filename = f"{timestamp.strftime('%H-%M-%S')}_ruma_summary_homography_{frame_count}.jpg"
     save_path = base_path / filename
-    cv2.imwrite(str(save_path), mapa)
+    #cv2.imwrite(str(save_path), mapa)
+    if mapa is not None :
+        cv2.imwrite(str(save_path), mapa)
+    else:
+        print(f"[Error] El frame está vacío. No se pudo guardar la imagen en: {save_path}")
     #print(f" Imagen homográfica de rumas guardada en: {save_path}")
