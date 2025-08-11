@@ -120,6 +120,15 @@ def save_alert_local(
 
     # Metadata para CSV (formato del sender - más simple)
     if save_csv:
+        # Formatear coordenadas con 2 decimales
+        if ruma_data.centroid_homographic:
+            coords_formatted = f"[{ruma_data.centroid_homographic[0]:.2f}, {ruma_data.centroid_homographic[1]:.2f}]"
+        else:
+            coords_formatted = "None"
+        
+        # Formatear radius con 2 decimales
+        radius_formatted = round(ruma_data.radius_homographic, 2) if ruma_data.radius_homographic else None
+        
         metadata_csv = {
             "cameraSN": context.camera_sn,
             "enterprise": context.enterprise,
@@ -127,9 +136,8 @@ def save_alert_local(
             "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
             "id": ruma_data.id,
             "percent": ruma_data.percent,
-            "coords": str(ruma_data.centroid_homographic),  # Convertir a string para CSV
-            "radius": ruma_data.radius_homographic,
-            "frame": None,
+            "coords": coords_formatted,  # Ya formateado con 2 decimales
+            "radius": radius_formatted,  # Ya redondeado a 2 decimales
         }
         save_to_csv(metadata_csv, csv_file)
 
