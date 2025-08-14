@@ -99,4 +99,4 @@ docker build --no-cache -t l4tml_briq .
         -v $(pwd):/briq_system/src \
         --name briq_container \
         --restart unless-stopped l4tml_briq \
-        /bin/bash -c "jupyter lab --ip 0.0.0.0 --port 8888 --allow-root &> /var/log/jupyter.log & tail -f /var/log/jupyter.log"
+        /bin/bash -c "jupyter lab --ip 0.0.0.0 --port 8888 --allow-root --NotebookApp.token='' --NotebookApp.password='' &> /var/log/jupyter.log & tail -f /var/log/jupyter.log"
