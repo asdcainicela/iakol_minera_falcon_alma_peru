@@ -56,8 +56,8 @@ class RumaMonitor:
         self.transformer = transformer
 
         # Envio de datos
-        self.send = False # Envio de datos a la nube
-        self.save = True # Guardado de datos local
+        self.send = True # Envio de datos a la nube
+        self.save = False # Guardado de datos local
 
     def process_detections(self, frame, frame_count):
         """Procesa las detecciones de personas y vehículos"""
