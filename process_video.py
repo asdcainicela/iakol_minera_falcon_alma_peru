@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from collections import defaultdict, deque
 from ultralytics import YOLO
-import argparse  # <== nuevo
+import argparse
 
 # Librerías propias
 from utils.paths import generar_output_video
