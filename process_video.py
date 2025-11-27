@@ -43,7 +43,8 @@ def main():
 
     model_det_path = 'models/model_detection.pt'
     model_seg_path = 'models/model_segmentation.pt'
-    api_url = "https://fn-alma-mina.azurewebsites.net/api/alert"
+    # api_url = "https://fn-alma-mina.azurewebsites.net/api/alert"
+    api_url = "https://api.ia-kol.com/api/Alert/create-alert-va"
 
     process_video(
         video_path=input_video,

@@ -103,7 +103,7 @@ def save_alert_local(
 
     # Metadata de la alerta (formato del storage - más completo)
     metadata_local = {
-        "cameraSN": context.camera_sn,
+        "camera": context.camera_sn,
         "enterprise": context.enterprise,
         "alert_type": alert_type,
         "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
@@ -130,7 +130,7 @@ def save_alert_local(
         radius_formatted = round(ruma_data.radius_homographic, 2) if ruma_data.radius_homographic else None
         
         metadata_csv = {
-            "cameraSN": context.camera_sn,
+            "camera": context.camera_sn,
             "enterprise": context.enterprise,
             "alert_type": alert_type,
             "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
