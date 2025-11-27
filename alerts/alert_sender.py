@@ -46,6 +46,7 @@ def prepare_and_send_alert(
     metadata = {
         "camera": context.camera_sn,
         "enterprise": context.enterprise,
+        "customer" : "falcon",
         "alert_type": alert_type,
         "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
         "id": ruma_data.id, 
