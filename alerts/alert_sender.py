@@ -32,6 +32,17 @@ def prepare_and_send_alert(
     #video_time_seconds = context.frame_count / context.fps
 
     # Metadata de la alerta
+
+    # Si es movimiento_zona y no hay coords válidas → forzar [0.0, 0.0]
+    
+    if alert_type == "movimiento_zona":
+        if ruma_data.percent is None:
+            ruma_data.percent = 0.0
+        if ruma_data.radius_homographic is None:
+            ruma_data.radius_homographic = 0.0
+        if ruma_data.centroid_homographic is None:
+            ruma_data.centroid_homographic = [0.0, 0.0]
+
     metadata = {
         "camera": context.camera_sn,
         "enterprise": context.enterprise,
@@ -39,7 +50,7 @@ def prepare_and_send_alert(
         "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
         "id": ruma_data.id, 
         "percent": ruma_data.percent,
-        "coords": ruma_data.centroid_homographic, #ruma_data.centroid,
+        "coords": list(ruma_data.centroid_homographic), #ruma_data.centroid,
         "radius": ruma_data.radius_homographic, #ruma_data.radius,
         #"centroid_homographic": ruma_data.centroid_homographic,
         #"radius_homographic": ruma_data.radius_homographic,
