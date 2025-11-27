@@ -8,8 +8,10 @@ def send_metadata(metadata: dict, api_url: str):
     Envía el diccionario metadata a la API.
     """
     print(" Enviando metadata a la API...")
+    # print(f"Metadata: {metadata}", flush=True)
     try:
         response = requests.post(api_url, json=metadata)
+        # print(f"Respuesta: {response}", flush=True)
         if response.status_code == 200:
             print(" Metadata enviada con éxito.")
         else:
@@ -31,7 +33,7 @@ def prepare_and_send_alert(
 
     # Metadata de la alerta
     metadata = {
-        "cameraSN": context.camera_sn,
+        "camera": context.camera_sn,
         "enterprise": context.enterprise,
         "alert_type": alert_type,
         "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),

@@ -57,7 +57,7 @@ google_analytics:
 # Configuración de cámaras
 cameras:
   1:
-    #input_video: "rtsp://admin:Panto2025@192.168.0.109:554/cam/realmonitor?channel=1&subtype=0"
+    # input_video: "rtsp://admin:Facil.12@192.168.0.3:554/cam/realmonitor?channel=1&subtype=0"
     input_video: "video/video_camara1_0_4__22.mp4"  
     output_video: "video/camera_1_processed.mp4"
     camera_sn: "DS-7104NI-Q1-1"
@@ -67,7 +67,7 @@ cameras:
     input_homography: [[1889,454], [1122,256], [120,1070], [1441,631], [1893,780]]
     output_homography: [[837,72], [324,73], [339,692], [575,363], [758,390]]
   2:
-    #input_video: "rtsp://admin:Panto2025@192.168.0.109:554/cam/realmonitor?channel=2&subtype=0"
+    # input_video: "rtsp://admin:Facil.12@192.168.0.64:554/cam/realmonitor?channel=1&subtype=0"
     input_video: "video/video_camara2_0_51.mp4"
     output_video: "video/camera_2_processed.mp4"
     camera_sn: "DS-7104NI-Q1-2"
@@ -78,7 +78,7 @@ cameras:
     output_homography: [[171, 437],[351, 674],[808, 648],[851, 202],[295, 90]]
 
   3:
-    #input_video: "rtsp://admin:Panto2025@192.168.0.109:554/cam/realmonitor?channel=3&subtype=1"
+    # input_video: "rtsp://admin:Facil.12@192.168.0.2:554/cam/realmonitor?channel=1&subtype=0"
     input_video: "video/video_camara3_0_100.mp4"
     output_video: "video/camera_3_processed.mp4"
     camera_sn: "DS-7104NI-Q1-3"
