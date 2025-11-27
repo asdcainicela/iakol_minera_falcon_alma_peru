@@ -51,14 +51,14 @@ Modify execution permissions to docker command
 Copy Dockerfile
 
 docker build --no-cache -t l4tml_alma .
-    docker build -t l4tml_alma .
+docker build -t l4tml_alma .
 
-    docker run --runtime nvidia --privileged -d --ipc=host \
-        --device /dev/bus/usb:/dev/bus/usb \
-        --device /dev/video0:/dev/video0 \
-        --device /dev/video1:/dev/video1 \
-        --network=host \
-        -v $(pwd):/briq_system/src \
-        --name alma_container \
-        --restart unless-stopped l4tml_alma \
-        /bin/bash -c "jupyter lab --ip 0.0.0.0 --port 8888 --allow-root --NotebookApp.token='' --NotebookApp.password='' &> /var/log/jupyter.log & tail -f /var/log/jupyter.log"
+docker run --runtime nvidia --privileged -d --ipc=host \
+    --device /dev/bus/usb:/dev/bus/usb \
+    --device /dev/video0:/dev/video0 \
+    --device /dev/video1:/dev/video1 \
+    --network=host \
+    -v $(pwd):/briq_system/src \
+    --name alma_container \
+    --restart unless-stopped l4tml_alma \
+    /bin/bash -c "jupyter lab --ip 0.0.0.0 --port 8888 --allow-root --NotebookApp.token='' --NotebookApp.password='' &> /var/log/jupyter.log & tail -f /var/log/jupyter.log"
