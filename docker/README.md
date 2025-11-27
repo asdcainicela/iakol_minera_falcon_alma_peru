@@ -48,19 +48,10 @@ Modify execution permissions to docker command
     groups
     # ... docker ...
 
-    # download base image
-    docker pull dustynv/l4t-ml:r35.3.1
-
-    jetson-containers run dustynv/l4t-ml:r35.3.1
-    # --ipc=host important to run
-    docker run --runtime nvidia -it --ipc=host --rm --network=host dustynv/l4t-ml:r35.3.1
-    # test with GPIO
-    docker run --runtime nvidia --privileged -it --ipc=host --rm --network=host dustynv/l4t-ml:r35.3.1
-
 Copy Dockerfile
 
-docker build --no-cache -t l4tml_briq .
-    docker build -t l4tml_briq .
+docker build --no-cache -t l4tml_alma .
+    docker build -t l4tml_alma .
 
     docker run --runtime nvidia --privileged -d --ipc=host \
         --device /dev/bus/usb:/dev/bus/usb \
@@ -69,5 +60,5 @@ docker build --no-cache -t l4tml_briq .
         --network=host \
         -v $(pwd):/briq_system/src \
         --name alma_container \
-        --restart unless-stopped l4tml_briq \
+        --restart unless-stopped l4tml_alma \
         /bin/bash -c "jupyter lab --ip 0.0.0.0 --port 8888 --allow-root --NotebookApp.token='' --NotebookApp.password='' &> /var/log/jupyter.log & tail -f /var/log/jupyter.log"
