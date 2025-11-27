@@ -1,0 +1,17 @@
+[Unit]
+Description=Python Script in Docker Container
+Requires=docker.service
+After=docker.service
+
+[Service]
+User=jorinnx
+Type=simple
+ExecStartPre=/bin/bash -c 'while ! docker ps | grep alma_container; do sleep 1; done'
+ExecStart=/usr/bin/docker exec alma_container /bin/bash -c "cd /workspace/iakol_minera_falcon_alma_peru && python3 process_video.py"
+ExecStop=/usr/bin/docker exec alma_container /bin/bash -c "pkill -f 'python3 process_video.py'" || true
+TimeoutStopSec=10
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

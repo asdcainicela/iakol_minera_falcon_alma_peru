@@ -1,30 +1,3 @@
-https://jetsonhacks.com/2023/05/30/jetson-orin-nano-tutorial-ssd-install-boot-and-jetpack-setup/
-
-$ git clone https://github.com/jetsonhacks/bootFromExternalStorage.git
-
-$ cd bootFromExternalStorage
-
-$ ./get_jetson_files.sh
-
-$ ./flash_jetson_external_storage.sh
-
-$ sudo apt update
-
-$ sudo apt upgrade
-
-$ sudo apt install nvidia-jetpack
-
-sudo pip3 install -U jetson-stats
-
-
-## Configure VNC
-
-    # https://forums.developer.nvidia.com/t/vnc-connection-to-jetson-orin-nano/262958/4
-    1. Connect an external monitor on your board
-    2. Settings -> Sharing -> Screen Sharing: Active
-    3. Press "Screen Sharing" -> Access Options -> Require a password
-    4. Settings -> Sharing -> Remote Login: On
-    5. $ gsettings set org.gnome.Vino require-encryption false
 
 ## Docker Config
 
@@ -84,8 +57,6 @@ Modify execution permissions to docker command
     # test with GPIO
     docker run --runtime nvidia --privileged -it --ipc=host --rm --network=host dustynv/l4t-ml:r35.3.1
 
-
-
 Copy Dockerfile
 
 docker build --no-cache -t l4tml_briq .
@@ -97,6 +68,6 @@ docker build --no-cache -t l4tml_briq .
         --device /dev/video1:/dev/video1 \
         --network=host \
         -v $(pwd):/briq_system/src \
-        --name briq_container \
+        --name alma_container \
         --restart unless-stopped l4tml_briq \
         /bin/bash -c "jupyter lab --ip 0.0.0.0 --port 8888 --allow-root --NotebookApp.token='' --NotebookApp.password='' &> /var/log/jupyter.log & tail -f /var/log/jupyter.log"
