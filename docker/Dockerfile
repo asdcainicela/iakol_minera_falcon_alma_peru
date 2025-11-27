@@ -4,11 +4,11 @@
 # depends: [pytorch, torchvision, torchaudio, tensorflow2, opencv, pycuda, cupy, onnxruntime, numba, gstreamer, jupyterlab]
 # test: [test_pandas.py, test_scipy.py, test_sklearn.py]
 #---
-  # Imagen oficial correcta para JetPack 6.1 (L4T R36.4.x)
+# Imagen oficial correcta para JetPack 6.1 (L4T R36.4.x)
 FROM dustynv/l4t-ml:r36.4.0
 
-# Directorio de trabajo
-WORKDIR /unidas_system/files
+# Directorio de trabajo UNIFICADO
+WORKDIR /app/alma
 
 # Herramientas de video y codecs
 RUN apt-get update && apt-get install -y \
@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y \
     gstreamer1.0-libav \
     gstreamer1.0-plugins-good \
     gstreamer1.0-plugins-bad \
-    gstreamer1.0-plugins-ugly
+    gstreamer1.0-plugins-ugly \
+    && rm -rf /var/lib/apt/lists/*
 
 # Zona horaria Lima
 RUN ln -sf /usr/share/zoneinfo/America/Lima /etc/localtime && \
@@ -26,12 +27,11 @@ RUN ln -sf /usr/share/zoneinfo/America/Lima /etc/localtime && \
 # Actualizar pip
 RUN python3 -m pip install --upgrade pip
 
-# Copiar tus requirements
+# Copiar requirements al directorio de trabajo
 COPY requirements_container.txt .
 
 # Instalar paquetes compatibles con JetPack 6
-RUN pip3 install --no-cache-dir pandas
-RUN pip3 install --no-cache-dir scikit-learn
+RUN pip3 install --no-cache-dir pandas scikit-learn
 
 # Instalar requerimientos del proyecto
 RUN pip3 install --no-cache-dir --default-timeout=1000 -r requirements_container.txt
@@ -46,14 +46,17 @@ RUN pip3 install ultralytics==8.3.63 --no-deps
 RUN sed -i "s|bool: np.bool,|bool: np.bool_,|g" /usr/lib/python3.10/dist-packages/tensorrt/__init__.py
 
 # Dependencias del proyecto
-RUN pip3 install imutils --no-deps
-RUN pip3 install logging-reset
-RUN pip3 install supervision==0.18.0 --no-deps
+RUN pip3 install imutils --no-deps \
+    && pip3 install logging-reset \
+    && pip3 install supervision==0.18.0 --no-deps
 
-# torch2trt (compatible JetPack 6)
-RUN git clone https://github.com/NVIDIA-AI-IOT/torch2trt
-WORKDIR /unidas_system/files/torch2trt
-RUN python3 setup.py install --user
+# torch2trt (compatible JetPack 6) - instalación temporal
+RUN cd /tmp && \
+    git clone https://github.com/NVIDIA-AI-IOT/torch2trt && \
+    cd torch2trt && \
+    python3 setup.py install --user && \
+    cd / && \
+    rm -rf /tmp/torch2trt
 
-# Regresar al directorio de ejecución del proyecto
-WORKDIR /app/alma/
+# Volver al directorio de trabajo final
+WORKDIR /app/alma
