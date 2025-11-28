@@ -120,16 +120,19 @@ class RumaMonitor:
         padding_x = int((x_max - x_min) * 0.1)
         padding_y = int((y_max - y_min) * 0.1)
         
+        # CRÍTICO: Limitar a las dimensiones del frame
         self.crop_bbox = (
             max(0, x_min - padding_x),
             max(0, y_min - padding_y),
-            x_max + padding_x,
-            y_max + padding_y
+            min(1920, x_max + padding_x),  # NUEVO: Límite
+            min(1080, y_max + padding_y)   # NUEVO: Límite
         )
         
         # Offset para ajustar coordenadas
         self.crop_offset = (self.crop_bbox[0], self.crop_bbox[1])
-
+        
+        print(f"[RumaMonitor] Crop polígono: {self.crop_bbox}")
+    
     def _crop_to_polygon(self, frame):
         """Cropea frame al bounding box del polígono"""
         x1, y1, x2, y2 = self.crop_bbox
