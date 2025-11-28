@@ -21,25 +21,44 @@ from libs.main_functions import process_video
 def main():
     parser = argparse.ArgumentParser(description="Procesamiento de video desde cámara.")
     parser.add_argument("camera_number", type=int, help="Número de cámara definido en el archivo mkdocs.yml")
-    parser.add_argument("--start", type=float, default=0, help="Segundo inicial del video (default: 0)")
-    parser.add_argument("--end", type=float, default=12, help="Segundo final del video (default: 12)")
 
     args = parser.parse_args()
 
     camera_number = args.camera_number
-    start_time_sec = args.start
-    end_time_sec = args.end
 
     try:
-        input_video, _, polygons, camera_sn, _, transformer, save_video = load_camera_config(
+        (input_video, _, polygons, camera_sn, _, transformer, use_rtsp,
+         save_video, start_video, end_video, time_save_rtsp) = load_camera_config(
             camera_number, config_path="mkdocs.yml"
         )
-        # Generar ruta de salida pasando también el camera_sn
+        
+        # Determinar tiempos según use_rtsp
+        if use_rtsp:
+            # Para RTSP
+            if save_video:
+                # Si se guarda video, usar time_save_rtsp del YAML
+                start_time_sec = 0
+                end_time_sec = time_save_rtsp
+                print(f"[INFO] Stream RTSP con grabación activa: {time_save_rtsp}s")
+            else:
+                # Si NO se guarda video, procesar indefinidamente
+                start_time_sec = 0
+                end_time_sec = float('inf')
+                print("[INFO] Stream RTSP sin grabación: procesamiento continuo")
+        else:
+            # Para archivos MP4, usar valores del YAML
+            start_time_sec = start_video
+            end_time_sec = end_video
+            print(f"[INFO] Video local: procesando desde {start_time_sec}s hasta {end_time_sec}s")
+        
+        # Generar ruta de salida
         output_video = generar_output_video(input_video, camera_sn=camera_sn)
+        
         print(f"Procesando video: {input_video}")
         print(f"Guardar video: {'Sí' if save_video else 'No'}")
         if save_video:
             print(f"Salida: {output_video}")
+            
     except ValueError as e:
         print(f"[Error] {e}")
         return
@@ -60,6 +79,7 @@ def main():
         camera_sn=camera_sn,
         api_url=api_url,
         transformer=transformer,
+        use_rtsp=use_rtsp,
         save_video=save_video
     )
 

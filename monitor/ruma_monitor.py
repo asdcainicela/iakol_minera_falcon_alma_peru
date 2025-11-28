@@ -18,7 +18,8 @@ from alerts.alert_info import RumaInfo # Dataclass para almacenar datos de rumas
 #-----------#
 
 class RumaMonitor:
-    def __init__(self, model_det_path, model_seg_path, detection_zone, camera_sn, api_url, transformer):
+    def __init__(self, model_det_path, model_seg_path, detection_zone, camera_sn, 
+                 api_url, transformer, save_video=False):
         """
         Inicializa el monitor de rumas
 
@@ -27,13 +28,17 @@ class RumaMonitor:
             model_seg_path: Ruta al modelo de segmentación
             detection_zone: Polígono que define la zona de detección
             camera_sn: Número de serie de la cámara
+            api_url: URL de la API para alertas
+            transformer: Transformador de homografía
+            save_video: Si True, aplica dibujos visuales. Si False, solo procesa datos.
         """
         self.api_url = api_url 
         self.model_det = YOLO(model_det_path)
         self.model_seg = YOLO(model_seg_path)
         self.detection_zone = detection_zone
         self.camera_sn = camera_sn
-        self.enterprise = 'alma' # Added enterprise attribute
+        self.enterprise = 'alma'
+        self.save_video = save_video  # NUEVO: controla si se dibujan elementos visuales
 
         # Tracking de rumas
         self.tracker = RumaTracker()
@@ -43,7 +48,7 @@ class RumaMonitor:
         self.object_interacting = False
         self.ruma_variation = False
         self.new_variation = False
-        self.last_interaction_frame = {}  # Para controlar cuando mostrar porcentajes
+        self.last_interaction_frame = {}
 
         # Configuración de colores
         self.RUMA_COLOR = (0, 255, 0)
@@ -85,7 +90,7 @@ class RumaMonitor:
                             color=self.TEXT_COLOR_WHITE, font_scale=0.6
                         )
 
-                        # Verificar si está en la zona
+                        # Verificar si está en la zona (siempre, independiente del dibujo)
                         center_x = (x1 + x2) // 2
                         center_y = (y1 + y2) // 2
 
@@ -135,47 +140,41 @@ class RumaMonitor:
                         if closest_ruma_id is not None:
                             # Actualizar ruma existente
                             self.tracker.update_ruma(closest_ruma_id, mask, frame_count)
-
                             ruma = self.tracker.rumas[closest_ruma_id]
 
-                            # Dibujar la ruma
-                            overlay = frame.copy()
-                            cv2.fillPoly(overlay, [mask.astype(np.int32)], self.RUMA_COLOR)
-                            frame = cv2.addWeighted(overlay, 0.3, frame, 0.7, 0)
+                            # Solo dibujar si save_video está activo
+                            if self.save_video:
+                                # Dibujar la ruma
+                                overlay = frame.copy()
+                                cv2.fillPoly(overlay, [mask.astype(np.int32)], self.RUMA_COLOR)
+                                frame = cv2.addWeighted(overlay, 0.3, frame, 0.7, 0)
 
-                            # --------  Lógica mejorada para mostrar porcentaje --------- #
-                            # 1. Detectar interacción actual
+                            # Lógica de interacción (siempre se ejecuta)
                             is_interacting = closest_ruma_id in rumas_interacting
-
-                            # Detectar fin de interacción (flanco de bajada)
                             draw_object_interacting = is_interacting
 
                             if ruma.was_interacting and not is_interacting:
-                              object_interaction_ended = True
-                              draw_object_interacting = True
-                              ruma_with_variation = ruma  # Guardar la ruma que tuvo variación
+                                object_interaction_ended = True
+                                draw_object_interacting = True
+                                ruma_with_variation = ruma
 
                             if is_interacting and not ruma.was_interacting:
-                              object_interacting = True
-                              draw_object_interacting = True
+                                object_interacting = True
+                                draw_object_interacting = True
 
-                            # 3. Guardar estado actual para el siguiente frame
                             ruma.was_interacting = is_interacting
 
                             if is_interacting:
                                 ruma.frames_without_interaction = 0
-                                ruma.last_stable_percentage = ruma.percentage  # Reiniciar al interactuar
+                                ruma.last_stable_percentage = ruma.percentage
                             else:
                                 ruma.frames_without_interaction += 1
-                                # Mientras no se llega a 30 frames, guarda el mayor porcentaje
-                                if ruma.frames_without_interaction < max_frames_without_interaction: #30
+                                if ruma.frames_without_interaction < max_frames_without_interaction:
                                     ruma.last_stable_percentage = max(ruma.last_stable_percentage, ruma.percentage)
 
-                            # Limita todo a máximo 100%
                             ruma.percentage = min(ruma.percentage, 100)
                             ruma.last_stable_percentage = min(ruma.last_stable_percentage, 100)
 
-                            # Decide qué mostrar
                             if ruma.frames_without_interaction >= max_frames_without_interaction:
                                 display_percentage = ruma.last_stable_percentage
                                 draw_ruma_variation = False
@@ -183,12 +182,13 @@ class RumaMonitor:
                                 display_percentage = ruma.percentage
                                 draw_ruma_variation = True
 
-                            # Mostrar ID y porcentaje usando posición fija del label
-                            label_text = f"R{ruma.id} | {display_percentage:.1f}%"
-                            frame = put_text_with_background(
-                                frame, label_text, ruma.label_position,  # ← Usar posición fija
-                                font_scale=0.6, color=self.TEXT_COLOR_WHITE
-                            )
+                            # Solo mostrar texto si save_video está activo
+                            if self.save_video:
+                                label_text = f"R{ruma.id} | {display_percentage:.1f}%"
+                                frame = put_text_with_background(
+                                    frame, label_text, ruma.label_position,
+                                    font_scale=0.6, color=self.TEXT_COLOR_WHITE
+                                )
 
                         else:
                             # Posible nueva ruma - agregar como candidata
@@ -215,16 +215,17 @@ class RumaMonitor:
             frame_with_drawings, frame_count, rumas_interacting
         )
 
-        # Dibujar zona y estado
-        frame_with_drawings = draw_zone_and_status(
-            frame_with_drawings,
-            self.detection_zone,
-            object_in_zone,
-            draw_object_interacting,
-            draw_ruma_variation,
-            TEXT_COLOR_RED=self.TEXT_COLOR_RED,
-            TEXT_COLOR_GREEN=self.TEXT_COLOR_GREEN
-        )
+        # Solo dibujar zona y estado si save_video está activo
+        if self.save_video:
+            frame_with_drawings = draw_zone_and_status(
+                frame_with_drawings,
+                self.detection_zone,
+                object_in_zone,
+                draw_object_interacting,
+                draw_ruma_variation,
+                TEXT_COLOR_RED=self.TEXT_COLOR_RED,
+                TEXT_COLOR_GREEN=self.TEXT_COLOR_GREEN
+            )
 
         # Guardar alertas si hay cambios de estado
         current_alerts = {
@@ -273,7 +274,7 @@ class RumaMonitor:
 
             self.tracker.new_ruma_created = None
 
-        # Guardar alertas cuando se activan (cambio de False a True)
+        # Guardar alertas cuando se activan
         for alert_type, current_state in current_alerts.items():
             if current_state and not previous_alerts[alert_type]:
                 alert_names = {

@@ -4,7 +4,8 @@ import cv2
 from monitor.ruma_monitor import RumaMonitor 
 
 def process_video(video_path, output_path, start_time_sec, end_time_sec,
-                  model_det_path, model_seg_path, detection_zone, camera_number, camera_sn, api_url, transformer, save_video=True):
+                  model_det_path, model_seg_path, detection_zone, camera_number, 
+                  camera_sn, api_url, transformer, use_rtsp=True, save_video=False):
     """
     Procesa un video completo usando el monitor de rumas.
 
@@ -12,7 +13,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
         video_path (str): Ruta del video de entrada o URL RTSP.
         output_path (str): Ruta del video de salida.
         start_time_sec (float): Tiempo de inicio en segundos.
-        end_time_sec (float): Tiempo de fin en segundos.
+        end_time_sec (float): Tiempo de fin en segundos (puede ser float('inf') para RTSP continuo).
         model_det_path (str): Ruta del modelo de detección.
         model_seg_path (str): Ruta del modelo de segmentación.
         detection_zone (dict[int, np.ndarray] | np.ndarray): Zonas de detección o una sola zona.
@@ -20,6 +21,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
         camera_sn (str): Número de serie de la cámara.
         api_url (str): URL de la API para enviar alertas.
         transformer: Transformador de homografía.
+        use_rtsp (bool): True si es stream RTSP, False si es archivo local.
         save_video (bool): Si True, guarda el video procesado. Si False, solo procesa sin guardar.
     """
 
@@ -29,11 +31,12 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
             raise ValueError(f"No hay zona definida para la cámara {camera_number}")
         detection_zone = detection_zone[camera_number]
 
-    # Inicializar monitor
-    monitor = RumaMonitor(model_det_path, model_seg_path, detection_zone, camera_sn, api_url, transformer)
+    # Inicializar monitor con el flag de save_video
+    monitor = RumaMonitor(model_det_path, model_seg_path, detection_zone, 
+                         camera_sn, api_url, transformer, save_video=save_video)
 
-    # Configurar opciones de captura para RTSP (mejor estabilidad)
-    if video_path.startswith('rtsp://'):
+    # Configurar opciones de captura según use_rtsp
+    if use_rtsp:
         print("[INFO] Detectado stream RTSP, configurando opciones de captura...")
         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
         cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
@@ -51,7 +54,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     print(f"Video: {width}x{height} @ {fps:.2f} FPS")
 
     # Para RTSP, el FPS puede ser 0 o incorrecto, usar valor por defecto
-    if fps <= 0 or video_path.startswith('rtsp://'):
+    if fps <= 0 or use_rtsp:
         fps = 25.0  # FPS por defecto para streams
         print(f"[INFO] Usando FPS por defecto: {fps}")
 
@@ -63,14 +66,19 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     else:
         print("[INFO] Modo sin grabación - solo procesamiento")
 
-    # Calcular frames
-    if video_path.startswith('rtsp://'):
-        print(f"[INFO] Stream RTSP: procesando durante {end_time_sec - start_time_sec} segundos")
+    # Calcular frames según use_rtsp
+    if use_rtsp:
         start_frame = 0
-        # Para RTSP, usamos la duración especificada
-        end_frame = int((end_time_sec - start_time_sec) * fps)
-        print(f"[INFO] Se grabarán aproximadamente {end_frame} frames")
+        if save_video:
+            # Si se guarda video RTSP, usar end_time_sec como duración
+            end_frame = int(end_time_sec * fps)
+            print(f"[INFO] Stream RTSP con grabación: grabando aproximadamente {end_frame} frames")
+        else:
+            # Si NO se guarda video, procesar indefinidamente
+            end_frame = float('inf')
+            print("[INFO] Stream RTSP sin grabación: procesamiento continuo (Ctrl+C para detener)")
     else:
+        # Para archivos MP4, usar start_time_sec y end_time_sec
         start_frame = int(start_time_sec * fps)
         end_frame = int(end_time_sec * fps)
         print(f"Procesando frames {start_frame} a {end_frame}")
@@ -93,7 +101,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
                     break
                     
                 # Para RTSP, intentar reconectar
-                if video_path.startswith('rtsp://'):
+                if use_rtsp:
                     print("[INFO] Intentando reconectar al stream RTSP...")
                     cap.release()
                     cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
@@ -105,8 +113,8 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
             # Resetear contador de errores si se lee correctamente
             consecutive_errors = 0
             
-            # Verificar si ya llegamos al límite (solo para videos locales)
-            if frame_count > end_frame:
+            # Verificar si ya llegamos al límite
+            if frame_count >= end_frame:
                 print(f"[INFO] Alcanzado frame límite: {end_frame}")
                 break
 
