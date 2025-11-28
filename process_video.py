@@ -1,12 +1,7 @@
 """
-process_video_threaded.py
+process_video.py
 
-Script principal para procesamiento multithreading con segmentación condicional.
-NO toca process_video.py original - es una alternativa paralela.
-
-Uso:
-    python process_video_threaded.py 1    # Procesar cámara 1
-    python process_video_threaded.py 2    # Procesar cámara 2
+Script principal para procesamiento multithreading con TODAS LAS OPTIMIZACIONES.
 """
 
 import argparse
@@ -22,7 +17,6 @@ from monitor.ruma_monitor import RumaMonitor
 from threading_system import FrameQueue, CaptureWorker, ProcessingWorker, StatsReporter
 
 
-# Variable global para manejar señales de interrupción
 workers = None
 
 
@@ -37,52 +31,42 @@ def signal_handler(sig, frame):
 def stop_all_workers(capture, processing, stats):
     """Detiene todos los workers de forma ordenada"""
     print("\n[MAIN] Deteniendo workers...")
-    
-    # Detener captura primero (deja de agregar frames)
     capture.stop(timeout=5)
-    
-    # Esperar a que processing termine los frames restantes
     processing.stop(timeout=15)
-    
-    # Detener stats (reporte final)
     stats.stop(timeout=3)
-    
     print("[MAIN] Todos los workers detenidos")
 
 
 def main():
     global workers
     
-    parser = argparse.ArgumentParser(description="Procesamiento de video con threading y segmentación condicional")
-    parser.add_argument("camera_number", type=int, help="Número de cámara (mkdocs.yml)")
-    parser.add_argument("--queue-size", type=int, default=30, 
-                       help="Tamaño de la cola de frames (default: 30)")
-    parser.add_argument("--stats-interval", type=int, default=100,
-                       help="Intervalo de reporte de stats (default: 100 frames)")
+    parser = argparse.ArgumentParser(description="Procesamiento OPTIMIZADO con threading")
+    parser.add_argument("camera_number", type=int, help="Número de cámara")
+    parser.add_argument("--queue-size", type=int, default=30, help="Tamaño de cola")
+    parser.add_argument("--stats-interval", type=int, default=100, help="Intervalo de stats")
     
     args = parser.parse_args()
     
-    # Registrar handler para Ctrl+C
     signal.signal(signal.SIGINT, signal_handler)
     
     print("-"*70)
-    print(f"[MAIN] Iniciando procesamiento threaded - Cámara {args.camera_number}")
+    print(f"[MAIN] Sistema OPTIMIZADO - Cámara {args.camera_number}")
     print("-"*70 + "\n")
     
-    # ========== 1. CARGAR CONFIGURACIÓN ==========
+    # ========== 1. CARGAR CONFIGURACIÓN (CON NUEVO PARÁMETRO) ==========
     try:
         (input_video, _, polygons, camera_sn, _, transformer, use_rtsp,
          save_video, start_video, end_video, time_save_rtsp,
-         seg_idle, seg_active, cooldown) = load_camera_config(
+         seg_idle, seg_active, cooldown, det_skip) = load_camera_config(
             args.camera_number, config_path="mkdocs.yml"
         )
         
-        print(f"[MAIN] Configuración cargada:")
+        print(f"[MAIN] Configuración optimizada:")
         print(f"  - Fuente: {'RTSP' if use_rtsp else 'Archivo local'}")
         print(f"  - Guardar video: {'Sí' if save_video else 'No'}")
-        print(f"  - Cámara SN: {camera_sn}")
         print(f"  - Segmentación IDLE: cada {seg_idle} frames")
         print(f"  - Segmentación ACTIVE: cada {seg_active} frames")
+        print(f"  - Detección SLEEP: cada {det_skip} frames")
         print(f"  - Cooldown: {cooldown} frames\n")
         
     except ValueError as e:
@@ -100,19 +84,17 @@ def main():
     # ========== 3. CREAR COLA Y WORKERS ==========
     frame_queue = FrameQueue(maxsize=args.queue_size)
     
-    # Worker de captura
     capture_worker = CaptureWorker(
         video_path=input_video,
         frame_queue=frame_queue,
         use_rtsp=use_rtsp
     )
     
-    # Iniciar captura para obtener info del video
     if not capture_worker.start():
         print("[MAIN] ERROR: No se pudo iniciar captura")
         return 1
     
-    time.sleep(1)  # Esperar a que capture lea primer frame
+    time.sleep(1)
     video_info = capture_worker.get_video_info()
     fps = video_info.get('fps', 25.0)
     
@@ -120,8 +102,8 @@ def main():
     print(f"  - Resolución: {video_info.get('width')}x{video_info.get('height')}")
     print(f"  - FPS: {fps:.2f}\n")
     
-    # ========== 4. INICIALIZAR MONITOR (con segmentación condicional) ==========
-    print("[MAIN] Inicializando RumaMonitor con segmentación condicional...")
+    # ========== 4. INICIALIZAR MONITOR CON TODAS LAS OPTIMIZACIONES ==========
+    print("[MAIN] Inicializando RumaMonitor OPTIMIZADO...")
     
     if isinstance(polygons, dict):
         detection_zone = polygons[args.camera_number]
@@ -139,12 +121,13 @@ def main():
             save_video=save_video,
             segmentation_interval_idle=seg_idle,
             segmentation_interval_active=seg_active,
-            activity_cooldown_frames=cooldown
+            activity_cooldown_frames=cooldown,
+            detection_skip_idle=det_skip  # NUEVO
         )
     
-    print("[MAIN] RumaMonitor inicializado\n")
+    print("[MAIN] RumaMonitor OPTIMIZADO inicializado\n")
     
-    # ========== 5. WORKER DE PROCESAMIENTO ==========
+    # ========== 5-7. WORKERS ==========
     processing_worker = ProcessingWorker(
         frame_queue=frame_queue,
         monitor=monitor,
@@ -152,13 +135,11 @@ def main():
         output_video_path=output_video if save_video else None
     )
     
-    # ========== 6. WORKER DE ESTADÍSTICAS ==========
     stats_reporter = StatsReporter(
         frame_queue=frame_queue,
         report_interval=args.stats_interval
     )
     
-    # ========== 7. INICIAR TODOS LOS WORKERS ==========
     workers = (capture_worker, processing_worker, stats_reporter)
     
     if not processing_worker.start():
@@ -172,25 +153,22 @@ def main():
         processing_worker.stop()
         return 1
     
-    print("\n[MAIN] Todos los workers iniciados")
+    print("\n[MAIN] ✅ Sistema OPTIMIZADO en ejecución")
     print("[MAIN] Presiona Ctrl+C para detener\n")
     
-    # ========== 8. ESPERAR (CTRL+C PARA DETENER) ==========
+    # ========== 8. ESPERAR ==========
     try:
-        # Para RTSP sin grabación, corre indefinidamente
         if use_rtsp and not save_video:
-            print("[MAIN] Modo RTSP continuo - procesando indefinidamente...")
+            print("[MAIN] Modo RTSP continuo...")
             while True:
                 time.sleep(1)
-        
-        # Para RTSP con grabación o MP4, esperar el tiempo especificado
         else:
             if use_rtsp:
                 duration = time_save_rtsp
                 print(f"[MAIN] Grabando RTSP por {duration} segundos...")
             else:
                 duration = end_video - start_video
-                print(f"[MAIN] Procesando video por {duration} segundos...")
+                print(f"[MAIN] Procesando por {duration} segundos...")
             
             time.sleep(duration)
             print("\n[MAIN] Tiempo completado, deteniendo...")
@@ -202,7 +180,7 @@ def main():
     stop_all_workers(*workers)
     
     print("\n" + "-"*70)
-    print("[MAIN] Procesamiento completado exitosamente")
+    print("[MAIN] ✅ Procesamiento OPTIMIZADO completado")
     print("-"*70 + "\n")
     
     return 0

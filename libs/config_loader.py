@@ -34,7 +34,7 @@ def _extract_camera_settings(config, camera_number):
         polygon_list = cam_config.get("polygons")
         
         # Parámetros de control
-        use_rtsp = cam_config.get("use_rtsp", False)  # Por defecto False (video local)
+        use_rtsp = cam_config.get("use_rtsp", False)
         save_video = cam_config.get("save_video", False)
         
         # Parámetros de tiempo
@@ -73,15 +73,17 @@ def _extract_processing_config(config):
     Extrae configuración global de procesamiento.
     
     Returns:
-        Tuple: (segmentation_interval_idle, segmentation_interval_active, activity_cooldown_frames)
+        Tuple: (segmentation_interval_idle, segmentation_interval_active, 
+                activity_cooldown_frames, detection_skip_idle)
     """
     processing_config = config.get("processing", {})
     
     seg_idle = processing_config.get("segmentation_interval_idle", 100)
     seg_active = processing_config.get("segmentation_interval_active", 10)
     cooldown = processing_config.get("activity_cooldown_frames", 200)
+    det_skip = processing_config.get("detection_skip_idle", 3)  # NUEVO
     
-    return seg_idle, seg_active, cooldown
+    return seg_idle, seg_active, cooldown, det_skip
 
 
 # === FUNCIÓN PRINCIPAL  ===
@@ -89,21 +91,18 @@ def load_camera_config(camera_number, config_path="mkdocs.yml"):
     """
     Carga la configuración de una cámara específica desde un archivo YAML.
 
-    Args:
-        camera_number (int): Número de la cámara a cargar.
-        config_path (str): Ruta al archivo de configuración YAML.
-
     Returns:
         Tuple: (input_video, output_video, detection_zone, camera_sn, save_data, 
                 transformer, use_rtsp, save_video, start_video, end_video, time_save_rtsp,
-                segmentation_interval_idle, segmentation_interval_active, activity_cooldown_frames)
+                segmentation_interval_idle, segmentation_interval_active, 
+                activity_cooldown_frames, detection_skip_idle)
     """
     print(f"[INFO] Cargando configuración para cámara {camera_number} desde '{config_path}'", flush=True)
 
     config = _read_yaml_config(config_path)
     
-    # Cargar config de procesamiento (global)
-    seg_idle, seg_active, cooldown = _extract_processing_config(config)
+    # Cargar config de procesamiento (global) - AHORA CON detection_skip_idle
+    seg_idle, seg_active, cooldown, det_skip = _extract_processing_config(config)
     
     # Cargar config de cámara
     (input_video, output_video, camera_sn, save_data, input_pts, output_pts, 
@@ -114,4 +113,4 @@ def load_camera_config(camera_number, config_path="mkdocs.yml"):
 
     return (input_video, output_video, detection_zone, camera_sn, save_data, 
             transformer, use_rtsp, save_video, start_video, end_video, time_save_rtsp,
-            seg_idle, seg_active, cooldown)
+            seg_idle, seg_active, cooldown, det_skip)

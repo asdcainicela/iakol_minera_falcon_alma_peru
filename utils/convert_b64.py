@@ -13,8 +13,8 @@ def frame_to_base64(frame):
     Returns:
         str: String base64 del frame comprimido
     """
-    # Resize a 320x180 (rectangular 16:9)
-    small = cv2.resize(frame, (320, 180))
+    # Resize a 
+    small = cv2.resize(frame, (1280, 720))
     
     # JPEG calidad 70 (muy liviano)
     encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 70]

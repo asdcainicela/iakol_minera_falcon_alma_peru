@@ -23,21 +23,13 @@ class RumaMonitor:
                  api_url, transformer, save_video=False,
                  segmentation_interval_idle=100,
                  segmentation_interval_active=10,
-                 activity_cooldown_frames=200):
+                 activity_cooldown_frames=200,
+                 detection_skip_idle=3):
         """
-        Inicializa el monitor de rumas
+        Inicializa el monitor de rumas con optimizaciones de rendimiento
 
         Args:
-            model_det_path: Ruta al modelo de detección
-            model_seg_path: Ruta al modelo de segmentación
-            detection_zone: Polígono que define la zona de detección
-            camera_sn: Número de serie de la cámara
-            api_url: URL de la API para alertas
-            transformer: Transformador de homografía
-            save_video: Si True, aplica dibujos visuales. Si False, solo procesa datos.
-            segmentation_interval_idle: Frames entre segmentaciones en reposo
-            segmentation_interval_active: Frames entre segmentaciones con actividad
-            activity_cooldown_frames: Frames sin actividad para volver a reposo
+            detection_skip_idle: Cada cuántos frames detectar en modo SLEEP (default: 3)
         """
         self.api_url = api_url 
         self.model_det = YOLO(model_det_path)
@@ -52,8 +44,8 @@ class RumaMonitor:
         
         # Tracking de objetos (personas/vehículos)
         self.object_tracker = ObjectTracker(
-            interaction_threshold=40,      # 40 frames = ~1.6s @ 25fps
-            max_distance_match=100         # 100 píxeles máximo para matching
+            interaction_threshold=40,
+            max_distance_match=150  # Aumentado para cámara PTZ con viento
         )
 
         # Configuración de colores
@@ -67,45 +59,112 @@ class RumaMonitor:
         self.transformer = transformer
 
         # Envio de datos
-        self.send = True # Envio de datos a la nube
-        self.save = False # Guardado de datos local
+        self.send = True
+        self.save = False
         
         # === SEGMENTACIÓN CONDICIONAL ===
         self.segmentation_interval_idle = segmentation_interval_idle
         self.segmentation_interval_active = segmentation_interval_active
         self.activity_cooldown_frames = activity_cooldown_frames
         
-        # Estado del sistema
-        self.system_state = "IDLE"  # "IDLE" o "ACTIVE"
+        # === DETECCIÓN CONDICIONAL (NUEVO) ===
+        self.detection_skip_idle = detection_skip_idle
+        self.sleep_threshold_frames = 600  # 600 frames sin actividad = SLEEP (~20s @ 30fps)
+        
+        # Estado del sistema (3 niveles ahora)
+        self.system_state = "SLEEP"  # "SLEEP", "IDLE", "ACTIVE"
         self.frames_without_activity = 0
         self.last_segmentation_frame = 0
         self.cached_segmentation_data = None
         
-        print(f"[RumaMonitor] Segmentación condicional activada:")
-        print(f"  - IDLE: cada {segmentation_interval_idle} frames")
-        print(f"  - ACTIVE: cada {segmentation_interval_active} frames")
-        print(f"  - Cooldown: {activity_cooldown_frames} frames")
+        # Cache de detección (para skip frames)
+        self.last_detection_result = {
+            'objects': [],
+            'frame_number': -1
+        }
+        
+        # === CROP DE POLÍGONO (NUEVO) ===
+        self._compute_polygon_bbox()
+        
+        print(f"[RumaMonitor] Sistema optimizado iniciado:")
+        print(f"  - Segmentación IDLE: cada {segmentation_interval_idle} frames")
+        print(f"  - Segmentación ACTIVE: cada {segmentation_interval_active} frames")
+        print(f"  - Detección SLEEP: cada {detection_skip_idle} frames")
+        print(f"  - Cooldown ACTIVE→IDLE: {activity_cooldown_frames} frames")
+        print(f"  - Cooldown IDLE→SLEEP: {self.sleep_threshold_frames} frames")
+        print(f"  - Crop polígono: {self.crop_bbox}")
+
+    def _compute_polygon_bbox(self):
+        """Calcula bounding box del polígono para crop optimizado"""
+        points = np.array(self.detection_zone)
+        x_min, y_min = points.min(axis=0)
+        x_max, y_max = points.max(axis=0)
+        
+        # Agregar padding del 10%
+        padding_x = int((x_max - x_min) * 0.1)
+        padding_y = int((y_max - y_min) * 0.1)
+        
+        self.crop_bbox = (
+            max(0, x_min - padding_x),
+            max(0, y_min - padding_y),
+            x_max + padding_x,
+            y_max + padding_y
+        )
+        
+        # Offset para ajustar coordenadas
+        self.crop_offset = (self.crop_bbox[0], self.crop_bbox[1])
+
+    def _crop_to_polygon(self, frame):
+        """Cropea frame al bounding box del polígono"""
+        x1, y1, x2, y2 = self.crop_bbox
+        h, w = frame.shape[:2]
+        
+        # Asegurar que no se salga de bounds
+        x2 = min(x2, w)
+        y2 = min(y2, h)
+        
+        return frame[y1:y2, x1:x2]
+
+    def _adjust_bbox_to_full_frame(self, bbox):
+        """Ajusta coordenadas del crop al frame completo"""
+        x1, y1, x2, y2 = bbox
+        offset_x, offset_y = self.crop_offset
+        return (x1 + offset_x, y1 + offset_y, x2 + offset_x, y2 + offset_y)
+
+    def _should_skip_detection(self, frame_count):
+        """Determina si debe skippear detección según estado"""
+        if self.system_state == "SLEEP":
+            # En SLEEP, detectar cada N frames
+            return frame_count % self.detection_skip_idle != 0
+        
+        # En IDLE y ACTIVE, siempre detectar
+        return False
 
     def process_detections(self, frame, frame_count):
         """
-        Procesa las detecciones de personas y vehículos.
+        Procesa las detecciones de personas y vehículos CON OPTIMIZACIONES.
         
-        Returns:
-            - frame: Frame con dibujos (si save_video=True)
-            - movement_alerts_to_send: Set de internal_ids que deben generar alerta de movimiento
-            - objects_per_ruma: Dict[ruma_id -> Set[internal_ids]] de objetos que intersectan cada ruma
-            - object_intersections: Dict[internal_id -> Set[ruma_ids]]
-            - has_activity: Bool indicando si hay actividad en la zona
+        CAMBIOS:
+        - Usa .predict() en lugar de .track() (más rápido)
+        - Cropea frame a polígono antes de YOLO
+        - Skip inteligente en modo SLEEP
         """
         movement_alerts_to_send = set()
-        objects_per_ruma = {}  # ruma_id -> set(internal_ids)
-        
-        # Inicializar diccionario para tracking de intersecciones
-        object_intersections = {}  # internal_id -> set(ruma_ids)
-        
-        has_activity_in_zone = False  # Flag para detectar actividad
+        objects_per_ruma = {}
+        object_intersections = {}
+        has_activity_in_zone = False
 
-        result_det = self.model_det.track(frame, conf=0.5, persist=True, verbose=False)
+        # === SKIP DETECCIÓN SI ESTAMOS EN SLEEP ===
+        if self._should_skip_detection(frame_count):
+            # Reutilizar última detección conocida
+            return (frame, movement_alerts_to_send, objects_per_ruma, 
+                    object_intersections, has_activity_in_zone)
+
+        # === CROP FRAME A POLÍGONO ===
+        frame_crop = self._crop_to_polygon(frame)
+
+        # === USAR .predict() EN LUGAR DE .track() ===
+        result_det = self.model_det.predict(frame_crop, conf=0.5, verbose=False)
 
         if (result_det is not None) and len(result_det) > 0:
             boxes = result_det[0].boxes
@@ -117,12 +176,10 @@ class RumaMonitor:
                     conf = float(box.conf[0])
 
                     if conf > 0.5:
-                        # Extraer track_id de YOLO (puede ser None)
-                        yolo_track_id = None
-                        if hasattr(box, 'id') and box.id is not None:
-                            yolo_track_id = int(box.id[0])
+                        # Ajustar coordenadas al frame completo
+                        x1, y1, x2, y2 = self._adjust_bbox_to_full_frame((x1, y1, x2, y2))
 
-                        # Calcular centroide y área del bbox
+                        # Calcular centroide
                         center_x = (x1 + x2) // 2
                         center_y = (y1 + y2) // 2
                         centroid = (center_x, center_y)
@@ -133,9 +190,9 @@ class RumaMonitor:
                         # Verificar si está en polígono
                         in_polygon = is_point_in_polygon(centroid, self.detection_zone)
                         
-                        # Actualizar o crear objeto en el tracker
+                        # Actualizar o crear objeto (SIN yolo_track_id, usamos None)
                         internal_id = self.object_tracker.update_or_create_object(
-                            yolo_track_id=yolo_track_id,
+                            yolo_track_id=None,  # Ya no usamos YOLO tracking
                             centroid=centroid,
                             bbox=(x1, y1, x2, y2),
                             object_type=object_type,
@@ -162,52 +219,48 @@ class RumaMonitor:
                                 color=self.TEXT_COLOR_WHITE, font_scale=0.6
                             )
                         
-                        # Verificar interacción con rumas
-                        for ruma_id, ruma in self.tracker.rumas.items():
-                            if not ruma.is_active:
-                                continue
-                            if calculate_intersection([x1, y1, x2, y2], ruma.initial_mask):
-                                # Registrar que este objeto intersecta con esta ruma
-                                if internal_id not in object_intersections:
-                                    object_intersections[internal_id] = set()
-                                object_intersections[internal_id].add(ruma_id)
-                                
-                                # Agregar a objects_per_ruma
-                                if ruma_id not in objects_per_ruma:
-                                    objects_per_ruma[ruma_id] = set()
-                                objects_per_ruma[ruma_id].add(internal_id)
+                        # Verificar interacción con rumas (SOLO si hay rumas activas)
+                        if len(self.tracker.rumas) > 0:
+                            for ruma_id, ruma in self.tracker.rumas.items():
+                                if not ruma.is_active:
+                                    continue
+                                if calculate_intersection([x1, y1, x2, y2], ruma.initial_mask):
+                                    if internal_id not in object_intersections:
+                                        object_intersections[internal_id] = set()
+                                    object_intersections[internal_id].add(ruma_id)
+                                    
+                                    if ruma_id not in objects_per_ruma:
+                                        objects_per_ruma[ruma_id] = set()
+                                    objects_per_ruma[ruma_id].add(internal_id)
 
-        # === ACTUALIZAR ESTADO DEL SISTEMA ===
+        # === ACTUALIZAR ESTADO DEL SISTEMA (3 NIVELES) ===
         if has_activity_in_zone:
             self.frames_without_activity = 0
-            if self.system_state == "IDLE":
-                print(f"[RumaMonitor] Frame {frame_count}: TRANSICIÓN IDLE → ACTIVE")
+            
+            if self.system_state in ["SLEEP", "IDLE"]:
+                print(f"[RumaMonitor] Frame {frame_count}: TRANSICIÓN {self.system_state} → ACTIVE")
                 self.system_state = "ACTIVE"
         else:
             self.frames_without_activity += 1
             
-            # Cooldown para volver a reposo
-            if self.frames_without_activity >= self.activity_cooldown_frames:
-                if self.system_state == "ACTIVE":
-                    print(f"[RumaMonitor] Frame {frame_count}: TRANSICIÓN ACTIVE → IDLE (cooldown completado)")
-                    self.system_state = "IDLE"
+            # ACTIVE → IDLE (rápido, 200 frames)
+            if self.system_state == "ACTIVE" and self.frames_without_activity >= self.activity_cooldown_frames:
+                print(f"[RumaMonitor] Frame {frame_count}: TRANSICIÓN ACTIVE → IDLE")
+                self.system_state = "IDLE"
+            
+            # IDLE → SLEEP (lento, 600 frames)
+            elif self.system_state == "IDLE" and self.frames_without_activity >= self.sleep_threshold_frames:
+                print(f"[RumaMonitor] Frame {frame_count}: TRANSICIÓN IDLE → SLEEP")
+                self.system_state = "SLEEP"
 
         return frame, movement_alerts_to_send, objects_per_ruma, object_intersections, has_activity_in_zone
 
     def _use_cached_segmentation(self, frame, frame_count, objects_per_ruma, object_intersections):
-        """
-        Reutiliza la última segmentación conocida cuando se hace skip.
+        """Reutiliza la última segmentación conocida cuando se hace skip"""
         
-        Returns:
-            - frame: Frame con dibujos de rumas (si save_video)
-            - interaction_alerts: Set[(internal_id, ruma_id)]
-            - variation_alerts: Set vacío (no hay cambios en rumas)
-        """
-        
-        # Si nunca se ha segmentado, forzar segmentación
         if self.cached_segmentation_data is None:
             print(f"[RumaMonitor] Frame {frame_count}: Cache vacío, forzando segmentación inicial")
-            self.last_segmentation_frame = -999  # forzar en próximo ciclo
+            self.last_segmentation_frame = -999
             return frame, set(), set()
         
         # Dibujar rumas desde cache si save_video
@@ -216,20 +269,18 @@ class RumaMonitor:
                 if not ruma.is_active:
                     continue
                     
-                # Dibujar overlay de la ruma
                 overlay = frame.copy()
                 mask = ruma.initial_mask.astype(np.int32)
                 cv2.fillPoly(overlay, [mask], self.RUMA_COLOR)
                 frame = cv2.addWeighted(overlay, 0.3, frame, 0.7, 0)
                 
-                # Etiqueta con último porcentaje conocido
                 label_text = f"R{ruma.id} | {ruma.percentage:.1f}%"
                 frame = put_text_with_background(
                     frame, label_text, ruma.label_position,
                     font_scale=0.6, color=self.TEXT_COLOR_WHITE
                 )
         
-        # Verificar interacciones CON datos viejos de rumas (esto es liviano)
+        # Verificar interacciones CON datos viejos de rumas
         interaction_alerts = set()
         for ruma_id in objects_per_ruma:
             for internal_id in objects_per_ruma[ruma_id]:
@@ -240,38 +291,24 @@ class RumaMonitor:
                 if should_alert:
                     interaction_alerts.add((internal_id, confirmed_ruma))
         
-        # NO hay alertas de variación (las rumas no cambiaron)
         return frame, interaction_alerts, set()
 
     def process_segmentation(self, frame, frame_count, objects_per_ruma, object_intersections):
-        """
-        Procesa la segmentación de rumas DE FORMA CONDICIONAL.
-        
-        Solo segmenta cuando:
-        - En modo IDLE: cada N frames (ej: 100)
-        - En modo ACTIVE: cada M frames (ej: 10)
-        
-        Args:
-            objects_per_ruma: Dict[ruma_id -> Set[internal_ids]] de objetos en cada ruma
-            object_intersections: Dict[internal_id -> Set[ruma_ids]] de rumas que toca cada objeto
-            
-        Returns:
-            - frame: Frame con dibujos
-            - interaction_alerts_to_send: Set[(internal_id, ruma_id)] de interacciones confirmadas
-            - variation_alerts_to_send: Set[ruma_id] de rumas con variación >= 15%
-        """
+        """Procesa la segmentación de rumas DE FORMA CONDICIONAL"""
         
         # === DETERMINAR SI TOCA SEGMENTAR ===
-        if self.system_state == "IDLE":
+        if self.system_state == "SLEEP":
+            # En SLEEP, segmentar muy raramente (300 frames)
+            interval = 300
+        elif self.system_state == "IDLE":
             interval = self.segmentation_interval_idle
-        else:
+        else:  # ACTIVE
             interval = self.segmentation_interval_active
 
         frames_since_last = frame_count - self.last_segmentation_frame
         should_segment = frames_since_last >= interval
 
         if not should_segment:
-            # Reutilizar última segmentación
             return self._use_cached_segmentation(frame, frame_count, objects_per_ruma, object_intersections)
 
         # === SI LLEGAMOS AQUÍ, SÍ SEGMENTAMOS ===
@@ -295,30 +332,23 @@ class RumaMonitor:
                         centroid_y = int(np.mean([p[1] for p in mask]))
                         centroid = (centroid_x, centroid_y)
 
-                        # Solo procesar rumas dentro de la zona de detección
                         if not is_point_in_polygon(centroid, self.detection_zone):
                             continue
 
-                        # Buscar ruma existente más cercana 
                         closest_ruma_id, distance = self.tracker.find_closest_ruma(centroid)
 
                         if closest_ruma_id is not None:
-                            # Actualizar ruma existente
                             self.tracker.update_ruma(closest_ruma_id, mask, frame_count)
                             ruma = self.tracker.rumas[closest_ruma_id]
 
-                            # Solo dibujar si save_video está activo
                             if self.save_video:
                                 overlay = frame.copy()
                                 cv2.fillPoly(overlay, [mask.astype(np.int32)], self.RUMA_COLOR)
                                 frame = cv2.addWeighted(overlay, 0.3, frame, 0.7, 0)
 
-                            # Verificar interacciones usando ObjectTracker
                             is_interacting = closest_ruma_id in objects_per_ruma and len(objects_per_ruma[closest_ruma_id]) > 0
                             
-                            # Actualizar estado de interacción de la ruma
                             if ruma.was_interacting and not is_interacting:
-                                # Terminó la interacción - verificar variación
                                 if ruma.should_send_variation_alert():
                                     variation_alerts_to_send.add(closest_ruma_id)
                             
@@ -328,7 +358,6 @@ class RumaMonitor:
                                 ruma.frames_without_interaction = 0
                                 ruma.last_stable_percentage = ruma.percentage
                                 
-                                # Verificar cada objeto que intersecta con esta ruma
                                 for internal_id in objects_per_ruma[closest_ruma_id]:
                                     intersecting_rumas = object_intersections.get(internal_id, set())
                                     should_alert, confirmed_ruma = self.object_tracker.update_interaction(
@@ -346,12 +375,9 @@ class RumaMonitor:
 
                             if ruma.frames_without_interaction >= max_frames_without_interaction:
                                 display_percentage = ruma.last_stable_percentage
-                                draw_ruma_variation = False
                             else:
                                 display_percentage = ruma.percentage
-                                draw_ruma_variation = True
 
-                            # Solo mostrar texto si save_video está activo
                             if self.save_video:
                                 label_text = f"R{ruma.id} | {display_percentage:.1f}%"
                                 frame = put_text_with_background(
@@ -360,10 +386,8 @@ class RumaMonitor:
                                 )
 
                         else:
-                            # Posible nueva ruma - agregar como candidata
                             self.tracker.add_candidate_ruma(mask, centroid, frame_count, frame.shape, self.transformer)
 
-        # Limpiar candidatas antiguas (más de 100 frames sin confirmación)
         self.tracker.clean_old_candidates(frame_count)
         
         # === GUARDAR EN CACHE ===
@@ -376,42 +400,33 @@ class RumaMonitor:
         return frame, interaction_alerts_to_send, variation_alerts_to_send
 
     def process_frame(self, frame, frame_count, fps):
-        """Procesa un frame completo CON TIMERS y SEGMENTACIÓN CONDICIONAL"""
+        """Procesa un frame completo CON OPTIMIZACIONES"""
         
-        # === TIMER START ===
         t_start = time.time()
         
-        # Verificar que el frame es válido
         if frame is None or frame.size == 0:
             print(f"[WARN] Frame {frame_count} inválido o vacío, saltando...")
-            # Retornar frame negro del tamaño esperado si es posible
             if hasattr(self, '_last_valid_frame_shape'):
                 return np.zeros(self._last_valid_frame_shape, dtype=np.uint8)
             else:
                 return np.zeros((1080, 1920, 3), dtype=np.uint8)
         
-        # Guardar shape del último frame válido
         self._last_valid_frame_shape = frame.shape
-        
         frame_with_drawings = frame.copy()
 
-        # === DETECCIÓN (SIEMPRE) ===
+        # === DETECCIÓN (CON SKIP EN SLEEP) ===
         frame_with_drawings, movement_alerts, objects_per_ruma, object_intersections, has_activity = self.process_detections(
             frame_with_drawings, frame_count
         )
-        
         t_detection = time.time()
 
         # === SEGMENTACIÓN (CONDICIONAL) ===
         frame_with_drawings, interaction_alerts, variation_alerts = self.process_segmentation(
             frame_with_drawings, frame_count, objects_per_ruma, object_intersections
         )
-        
         t_segmentation = time.time()
 
-        # Solo dibujar zona y estado si save_video está activo
         if self.save_video:
-            # Determinar estados para visualización
             has_movement = len(movement_alerts) > 0
             has_interaction = len(interaction_alerts) > 0
             has_variation = len(variation_alerts) > 0
@@ -429,131 +444,80 @@ class RumaMonitor:
         t_drawing = time.time()
 
         # === ENVIAR ALERTAS ===
-        
-        # 1. Alertas de movimiento en zona
         for internal_id in movement_alerts:
             ruma_data = RumaInfo(
-                id=None,
-                percent=None,
-                centroid=None,
-                radius=None,
-                centroid_homographic=None,
-                radius_homographic=None
+                id=None, percent=None, centroid=None, radius=None,
+                centroid_homographic=None, radius_homographic=None
             )
-            
             save_alert(
-                alert_type='movimiento_zona',
-                ruma_data=ruma_data,
-                frame=frame_with_drawings,
-                frame_count=frame_count,
-                fps=fps,
-                camera_sn=self.camera_sn,
-                enterprise=self.enterprise,
-                api_url=self.api_url,
-                send=self.send,
-                save=self.save,
+                alert_type='movimiento_zona', ruma_data=ruma_data,
+                frame=frame_with_drawings, frame_count=frame_count, fps=fps,
+                camera_sn=self.camera_sn, enterprise=self.enterprise,
+                api_url=self.api_url, send=self.send, save=self.save,
                 ruma_summary=self.tracker.ruma_summary,
-                frame_shape=frame.shape,
-                detection_zone=self.detection_zone
+                frame_shape=frame.shape, detection_zone=self.detection_zone
             )
         
-        # 2. Alertas de interacción con rumas
         for (internal_id, ruma_id) in interaction_alerts:
             if ruma_id in self.tracker.rumas:
                 ruma = self.tracker.rumas[ruma_id]
                 ruma_data = RumaInfo(
-                    id=ruma.id,
-                    percent=ruma.last_stable_percentage,
-                    centroid=ruma.centroid,
-                    radius=ruma.radius,
+                    id=ruma.id, percent=ruma.last_stable_percentage,
+                    centroid=ruma.centroid, radius=ruma.radius,
                     centroid_homographic=ruma.centroid_homographic,
                     radius_homographic=ruma.radius_homographic
                 )
-                
                 save_alert(
-                    alert_type='interaccion_rumas',
-                    ruma_data=ruma_data,
-                    frame=frame_with_drawings,
-                    frame_count=frame_count,
-                    fps=fps,
-                    camera_sn=self.camera_sn,
-                    enterprise=self.enterprise,
-                    api_url=self.api_url,
-                    send=self.send,
-                    save=self.save,
+                    alert_type='interaccion_rumas', ruma_data=ruma_data,
+                    frame=frame_with_drawings, frame_count=frame_count, fps=fps,
+                    camera_sn=self.camera_sn, enterprise=self.enterprise,
+                    api_url=self.api_url, send=self.send, save=self.save,
                     ruma_summary=self.tracker.ruma_summary,
-                    frame_shape=frame.shape,
-                    detection_zone=self.detection_zone
+                    frame_shape=frame.shape, detection_zone=self.detection_zone
                 )
         
-        # 3. Alertas de variación de rumas
         for ruma_id in variation_alerts:
             if ruma_id in self.tracker.rumas:
                 ruma = self.tracker.rumas[ruma_id]
                 ruma_data = RumaInfo(
-                    id=ruma.id,
-                    percent=ruma.percentage,
-                    centroid=ruma.centroid,
-                    radius=ruma.radius,
+                    id=ruma.id, percent=ruma.percentage,
+                    centroid=ruma.centroid, radius=ruma.radius,
                     centroid_homographic=ruma.centroid_homographic,
                     radius_homographic=ruma.radius_homographic
                 )
-                
                 save_alert(
-                    alert_type='variacion_rumas',
-                    ruma_data=ruma_data,
-                    frame=frame_with_drawings,
-                    frame_count=frame_count,
-                    fps=fps,
-                    camera_sn=self.camera_sn,
-                    enterprise=self.enterprise,
-                    api_url=self.api_url,
-                    send=self.send,
-                    save=self.save,
+                    alert_type='variacion_rumas', ruma_data=ruma_data,
+                    frame=frame_with_drawings, frame_count=frame_count, fps=fps,
+                    camera_sn=self.camera_sn, enterprise=self.enterprise,
+                    api_url=self.api_url, send=self.send, save=self.save,
                     ruma_summary=self.tracker.ruma_summary,
-                    frame_shape=frame.shape,
-                    detection_zone=self.detection_zone
+                    frame_shape=frame.shape, detection_zone=self.detection_zone
                 )
         
-        # 4. Detectar nuevas rumas
         if self.tracker.new_ruma_created:
             ruma_id, frame_shape = self.tracker.new_ruma_created
             ruma = self.tracker.rumas[ruma_id]
             ruma_data = RumaInfo(
-                id=ruma.id,
-                percent=100.0,
-                centroid=ruma.centroid,
-                radius=ruma.radius,
+                id=ruma.id, percent=100.0,
+                centroid=ruma.centroid, radius=ruma.radius,
                 centroid_homographic=ruma.centroid_homographic,
                 radius_homographic=ruma.radius_homographic
             )
-
             save_alert(
-                alert_type='nueva_ruma',
-                ruma_data=ruma_data,
-                frame=frame_with_drawings,
-                frame_count=frame_count,
-                fps=fps,
-                camera_sn=self.camera_sn,
-                enterprise=self.enterprise,
-                api_url=self.api_url,
-                send=self.send,
-                save=self.save,
+                alert_type='nueva_ruma', ruma_data=ruma_data,
+                frame=frame_with_drawings, frame_count=frame_count, fps=fps,
+                camera_sn=self.camera_sn, enterprise=self.enterprise,
+                api_url=self.api_url, send=self.send, save=self.save,
                 ruma_summary=self.tracker.ruma_summary,
-                frame_shape=frame.shape,
-                detection_zone=self.detection_zone
+                frame_shape=frame.shape, detection_zone=self.detection_zone
             )
-
             self.tracker.new_ruma_created = None
         
         t_alerts = time.time()
-        
-        # Limpiar objetos antiguos del tracker
         self.object_tracker.cleanup_old_objects(frame_count)
-        
         t_end = time.time()
         
-        # === IMPRIMIR TIMERS CADA 50 FRAMES ===
+        # === TIMERS ===
         if frame_count % 50 == 0:
             det_ms = (t_detection - t_start) * 1000
             seg_ms = (t_segmentation - t_detection) * 1000

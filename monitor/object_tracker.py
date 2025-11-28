@@ -28,22 +28,27 @@ class TrackedObject:
 
 
 class ObjectTracker:
-    """Trackea personas y vehículos de forma robusta ante movimiento de cámara PTZ"""
+    """
+    Trackea personas y vehículos de forma robusta ante movimiento de cámara PTZ.
     
-    def __init__(self, interaction_threshold=40, max_distance_match=100):
+    OPTIMIZADO para trabajar SIN YOLO tracking (solo matching geométrico).
+    """
+    
+    def __init__(self, interaction_threshold=40, max_distance_match=150):
         """
         Args:
             interaction_threshold: Frames consecutivos para confirmar interacción con ruma
             max_distance_match: Distancia máxima (px) para considerar mismo objeto
+                               (AUMENTADO a 150 para cámaras PTZ con viento)
         """
         self.interaction_threshold = interaction_threshold
         self.max_distance_match = max_distance_match
         self.next_internal_id = 1
         self.tracked_objects: Dict[int, TrackedObject] = {}
         
-        # Configuración
-        self.max_frames_missing = 100  # Eliminar objetos no vistos en X frames
-        self.bbox_size_tolerance = 0.3  # ±30% tolerancia en tamaño
+        # Configuración ajustada para cámara PTZ
+        self.max_frames_missing = 100
+        self.bbox_size_tolerance = 0.9  # ±40% tolerancia (aumentado por movimiento de cámara)
         
     def _calculate_distance(self, point1: Tuple[int, int], point2: Tuple[int, int]) -> float:
         """Calcula distancia euclidiana entre dos puntos"""
@@ -64,20 +69,15 @@ class ObjectTracker:
         """
         Busca un objeto existente que coincida con la detección actual.
         
+        CAMBIO: yolo_track_id siempre será None ahora (no usamos .track())
+        
         Estrategia:
-        1. Buscar por yolo_track_id si existe
-        2. Si no, buscar por proximidad + tipo + tamaño similar
+        1. Buscar por proximidad + tipo + tamaño similar
+        2. Priorizar objetos vistos recientemente
         
         Returns:
             internal_id del objeto encontrado o None
         """
-        # Estrategia 1: Buscar por YOLO track_id
-        if yolo_track_id is not None:
-            for internal_id, obj in self.tracked_objects.items():
-                if obj.yolo_track_id == yolo_track_id and obj.object_type == object_type:
-                    return internal_id
-        
-        # Estrategia 2: Buscar por proximidad + tipo + tamaño
         best_match = None
         min_distance = float('inf')
         
@@ -93,7 +93,7 @@ class ObjectTracker:
             if distance > self.max_distance_match:
                 continue
             
-            # Verificar tamaño similar
+            # Verificar tamaño similar (más permisivo con cámara PTZ)
             if not self._is_size_similar(bbox_area, obj.bbox_area):
                 continue
             
@@ -114,27 +114,17 @@ class ObjectTracker:
         """
         Actualiza un objeto existente o crea uno nuevo.
         
-        Args:
-            yolo_track_id: ID del tracker de YOLO (puede ser None)
-            centroid: Centro del bbox (x, y)
-            bbox: Bounding box (x1, y1, x2, y2)
-            object_type: 'person' o 'vehicle'
-            frame_count: Frame actual
-            in_polygon: Si está dentro del polígono de detección
-            
-        Returns:
-            internal_id del objeto
+        CAMBIO: yolo_track_id será None (no usado), 100% matching geométrico.
         """
         x1, y1, x2, y2 = bbox
         bbox_area = (x2 - x1) * (y2 - y1)
         
-        # Buscar matching
-        internal_id = self.find_matching_object(centroid, bbox_area, object_type, yolo_track_id)
+        # Buscar matching SOLO por geometría
+        internal_id = self.find_matching_object(centroid, bbox_area, object_type, None)
         
         if internal_id is not None:
             # Actualizar objeto existente
             obj = self.tracked_objects[internal_id]
-            obj.yolo_track_id = yolo_track_id  # Actualizar con el nuevo track_id de YOLO
             obj.centroid = centroid
             obj.bbox_area = bbox_area
             obj.last_seen_frame = frame_count
@@ -147,7 +137,7 @@ class ObjectTracker:
             
             new_obj = TrackedObject(
                 internal_id=internal_id,
-                yolo_track_id=yolo_track_id,
+                yolo_track_id=None,  # No usado
                 object_type=object_type,
                 centroid=centroid,
                 bbox_area=bbox_area,
@@ -156,30 +146,24 @@ class ObjectTracker:
             )
             
             self.tracked_objects[internal_id] = new_obj
-            print(f"[ObjectTracker] Nuevo objeto creado: ID={internal_id}, tipo={object_type}")
+            print(f"[ObjectTracker] Nuevo objeto: ID={internal_id}, tipo={object_type}, pos={centroid}")
         
         return internal_id
     
     def check_movement_alert(self, internal_id: int) -> bool:
         """
         Verifica si debe enviar alerta de movimiento en zona.
-        
         Solo envía alerta la PRIMERA VEZ que el objeto entra al polígono.
-        
-        Returns:
-            True si debe enviar alerta
         """
         if internal_id not in self.tracked_objects:
             return False
         
         obj = self.tracked_objects[internal_id]
         
-        # Si está en zona y no se ha enviado alerta
         if obj.in_zone and not obj.alert_sent_movement:
             obj.alert_sent_movement = True
             return True
         
-        # Si sale de la zona, resetear para permitir nueva alerta si vuelve a entrar
         if not obj.in_zone:
             obj.alert_sent_movement = False
         
@@ -191,10 +175,6 @@ class ObjectTracker:
         """
         Actualiza el estado de interacción con rumas.
         
-        Args:
-            internal_id: ID del objeto
-            intersecting_ruma_ids: Set de IDs de rumas con las que intersecta
-            
         Returns:
             (should_alert, ruma_id): True si debe enviar alerta, y el ID de la ruma
         """
@@ -203,40 +183,30 @@ class ObjectTracker:
         
         obj = self.tracked_objects[internal_id]
         
-        # Si no está tocando ninguna ruma
         if not intersecting_ruma_ids:
             obj.current_ruma_id = None
             obj.frames_in_current_ruma = 0
             return False, None
         
-        # Tomar la primera ruma con la que intersecta
         current_ruma = next(iter(intersecting_ruma_ids))
         
-        # Si cambió de ruma, resetear contador
         if obj.current_ruma_id != current_ruma:
             obj.current_ruma_id = current_ruma
             obj.frames_in_current_ruma = 1
             return False, None
         
-        # Incrementar contador de frames en la misma ruma
         obj.frames_in_current_ruma += 1
         
-        # Verificar si alcanzó el umbral y no se ha alertado antes
         if (obj.frames_in_current_ruma >= self.interaction_threshold and 
             current_ruma not in obj.interacted_rumas):
             obj.interacted_rumas.add(current_ruma)
-            print(f"[ObjectTracker] Interacción confirmada: objeto {internal_id} con ruma {current_ruma} ({obj.frames_in_current_ruma} frames)")
+            print(f"[ObjectTracker] Interacción confirmada: objeto {internal_id} con ruma {current_ruma}")
             return True, current_ruma
         
         return False, None
     
     def cleanup_old_objects(self, current_frame: int):
-        """
-        Elimina objetos que no se han visto en mucho tiempo.
-        
-        Args:
-            current_frame: Frame actual
-        """
+        """Elimina objetos que no se han visto en mucho tiempo"""
         to_remove = []
         
         for internal_id, obj in self.tracked_objects.items():
@@ -246,8 +216,9 @@ class ObjectTracker:
         
         for internal_id in to_remove:
             del self.tracked_objects[internal_id]
-            if to_remove:
-                print(f"[ObjectTracker] Limpieza: {len(to_remove)} objetos eliminados")
+        
+        if to_remove:
+            print(f"[ObjectTracker] Limpieza: {len(to_remove)} objetos eliminados")
     
     def get_active_objects(self) -> Dict[int, TrackedObject]:
         """Retorna diccionario de objetos activos"""
