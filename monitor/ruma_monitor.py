@@ -72,10 +72,11 @@ class RumaMonitor:
         self.sleep_threshold_frames = 600  # 600 frames sin actividad = SLEEP (~20s @ 30fps)
         
         # Estado del sistema (3 niveles ahora)
-        self.system_state = "SLEEP"  # "SLEEP", "IDLE", "ACTIVE"
+        self.system_state = "IDLE"  # Iniciar en IDLE para detectar rumas iniciales
         self.frames_without_activity = 0
-        self.last_segmentation_frame = 0
+        self.last_segmentation_frame = -999  # Forzar segmentación inmediata
         self.cached_segmentation_data = None
+        self.initial_scan_complete = False  # Flag para scan inicial
         
         # Cache de detección (para skip frames)
         self.last_detection_result = {
@@ -133,6 +134,10 @@ class RumaMonitor:
 
     def _should_skip_detection(self, frame_count):
         """Determina si debe skippear detección según estado"""
+        # DURANTE SCAN INICIAL, NUNCA SKIP (queremos detectar todo)
+        if not self.initial_scan_complete:
+            return False
+        
         if self.system_state == "SLEEP":
             # En SLEEP, detectar cada N frames
             return frame_count % self.detection_skip_idle != 0
@@ -248,8 +253,10 @@ class RumaMonitor:
                 print(f"[RumaMonitor] Frame {frame_count}: TRANSICIÓN ACTIVE → IDLE")
                 self.system_state = "IDLE"
             
-            # IDLE → SLEEP (lento, 600 frames)
-            elif self.system_state == "IDLE" and self.frames_without_activity >= self.sleep_threshold_frames:
+            # IDLE → SLEEP (lento, 600 frames) - SOLO SI YA COMPLETÓ SCAN INICIAL
+            elif (self.system_state == "IDLE" and 
+                  self.initial_scan_complete and 
+                  self.frames_without_activity >= self.sleep_threshold_frames):
                 print(f"[RumaMonitor] Frame {frame_count}: TRANSICIÓN IDLE → SLEEP")
                 self.system_state = "SLEEP"
 
@@ -296,24 +303,58 @@ class RumaMonitor:
     def process_segmentation(self, frame, frame_count, objects_per_ruma, object_intersections):
         """Procesa la segmentación de rumas DE FORMA CONDICIONAL"""
         
-        # === DETERMINAR SI TOCA SEGMENTAR ===
-        if self.system_state == "SLEEP":
-            # En SLEEP, segmentar muy raramente (300 frames)
-            interval = 300
-        elif self.system_state == "IDLE":
-            interval = self.segmentation_interval_idle
-        else:  # ACTIVE
-            interval = self.segmentation_interval_active
+        # === SCAN INICIAL AGRESIVO (primeros 30 frames) ===
+        if not self.initial_scan_complete and frame_count <= 30:
+            # Forzar segmentación cada 5 frames al inicio
+            frames_since_last = frame_count - self.last_segmentation_frame
+            if frames_since_last >= 3:
+                print(f"[RumaMonitor] Frame {frame_count}: SCAN INICIAL (cada 5 frames)")
+                self.last_segmentation_frame = frame_count
+                # Continuar con segmentación normal abajo
+            else:
+                # Skip pero no usar cache (aún no hay rumas)
+                return frame, set(), set()
+            
+            # Marcar scan completo al frame 30
+            if frame_count == 30:
+                self.initial_scan_complete = True
+                print(f"[RumaMonitor] SCAN INICIAL COMPLETADO - Rumas detectadas: {len(self.tracker.rumas)}")
+                # Transición a SLEEP si no hay actividad
+                if self.frames_without_activity > 20:
+                    self.system_state = "SLEEP"
+                    print(f"[RumaMonitor] Transición automática a SLEEP")
+        else:
+            # === LÓGICA NORMAL DESPUÉS DEL SCAN INICIAL ===
+            if self.system_state == "SLEEP":
+                interval = 300
+            elif self.system_state == "IDLE":
+                interval = self.segmentation_interval_idle
+            else:  # ACTIVE
+                interval = self.segmentation_interval_active
 
-        frames_since_last = frame_count - self.last_segmentation_frame
-        should_segment = frames_since_last >= interval
+            frames_since_last = frame_count - self.last_segmentation_frame
+            should_segment = frames_since_last >= interval
 
-        if not should_segment:
-            return self._use_cached_segmentation(frame, frame_count, objects_per_ruma, object_intersections)
+            if not should_segment:
+                return self._use_cached_segmentation(frame, frame_count, objects_per_ruma, object_intersections)
 
         # === SI LLEGAMOS AQUÍ, SÍ SEGMENTAMOS ===
         self.last_segmentation_frame = frame_count
-        print(f"[RumaMonitor] Frame {frame_count}: Segmentando (modo {self.system_state}, intervalo {interval})")
+        
+        # Determinar estado para logging
+        if not self.initial_scan_complete:
+            state_msg = "SCAN_INICIAL"
+            interval = 5
+        else:
+            state_msg = self.system_state
+            if self.system_state == "SLEEP":
+                interval = 300
+            elif self.system_state == "IDLE":
+                interval = self.segmentation_interval_idle
+            else:
+                interval = self.segmentation_interval_active
+        
+        print(f"[RumaMonitor] Frame {frame_count}: Segmentando (modo {state_msg}, intervalo {interval})")
         
         # === CÓDIGO ORIGINAL DE SEGMENTACIÓN ===
         result_seg = self.model_seg(frame, conf=0.5, verbose=False)
