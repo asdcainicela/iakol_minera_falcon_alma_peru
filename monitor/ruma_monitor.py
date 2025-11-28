@@ -384,7 +384,7 @@ class RumaMonitor:
         #result_seg = self.model_seg(frame, conf=0.5, verbose=False)
         result_seg = self.model_seg(
             frame, 
-            conf=0.4, 
+            conf=0.5, 
             verbose=False,
             imgsz=self.seg_imgsz  # NUEVO: usar tamaño correcto
         )
