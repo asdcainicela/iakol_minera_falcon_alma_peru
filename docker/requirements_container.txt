@@ -1,6 +1,6 @@
-pillow>=7.1.2
-pyyaml>=5.3.1
-requests>=2.23.0
+# pillow ya instalado antes
+# pyyaml ya instalado antes
+# requests ya instalado antes
 # scipy ya instalado antes
 tqdm>=4.64.0
 psutil
@@ -31,14 +31,14 @@ rapidfuzz
 #opencv-contrib-python<=4.6.0.66
 cython
 # Pillow ya instalado antes
-pyyaml
+# pyyaml ya instalado antes
 
 # benchmark yolov8
 portalocker #ncnn
 
 
 # face id
-requests>=2.27.1
+# requests ya instalado antes
 # numpy ya instalado antes
 # pandas ya instalado antes
 gdown>=3.10.1

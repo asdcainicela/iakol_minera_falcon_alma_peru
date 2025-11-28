@@ -40,7 +40,9 @@ RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple \
     pandas>=1.1.4 \
     scikit-learn \
     numpy \
-    pillow
+    pillow \
+    requests>=2.23.0 \
+    pyyaml>=5.3.1
 
 # Copiar requirements al directorio de trabajo
 COPY requirements_container.txt .
