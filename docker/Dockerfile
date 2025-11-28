@@ -56,8 +56,9 @@ RUN if [ -f /usr/lib/python3.10/dist-packages/tensorrt/__init__.py ]; then \
     fi
 
 # Dependencias del proyecto
-RUN pip3 install logging-reset \
-    && pip3 install supervision==0.18.0 --no-deps
+RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple --default-timeout=100 \
+    logging-reset \
+    supervision==0.18.0 --no-deps
 
 # torch2trt (compatible JetPack 6) - instalación temporal
 RUN cd /tmp && \
