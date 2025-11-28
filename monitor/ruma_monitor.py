@@ -340,7 +340,7 @@ class RumaMonitor:
                 return frame, set(), set()
             
             # Marcar scan completo al frame 30
-            if frame_count == 30:
+            if frame_count >= 30:
                 self.initial_scan_complete = True
                 print(f"[RumaMonitor] SCAN INICIAL COMPLETADO - Rumas detectadas: {len(self.tracker.rumas)}")
                 # Transición a SLEEP si no hay actividad
