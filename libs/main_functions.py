@@ -1,3 +1,4 @@
+import os
 import torch
 import cv2
 from monitor.ruma_monitor import RumaMonitor 
@@ -8,7 +9,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     Procesa un video completo usando el monitor de rumas.
 
     Args:
-        video_path (str): Ruta del video de entrada.
+        video_path (str): Ruta del video de entrada o URL RTSP.
         output_path (str): Ruta del video de salida.
         start_time_sec (float): Tiempo de inicio en segundos.
         end_time_sec (float): Tiempo de fin en segundos.
@@ -17,6 +18,8 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
         detection_zone (dict[int, np.ndarray] | np.ndarray): Zonas de detección o una sola zona.
         camera_number (int): Número de la cámara.
         camera_sn (str): Número de serie de la cámara.
+        api_url (str): URL de la API para enviar alertas.
+        transformer: Transformador de homografía.
     """
 
     # Si detection_zone es un dict, seleccionamos la zona correspondiente
@@ -26,30 +29,77 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
         detection_zone = detection_zone[camera_number]
 
     # Inicializar monitor
-    monitor = RumaMonitor(model_det_path, model_seg_path, detection_zone, camera_sn, api_url,transformer)
+    monitor = RumaMonitor(model_det_path, model_seg_path, detection_zone, camera_sn, api_url, transformer)
 
-    # Configurar video
-    cap = cv2.VideoCapture(video_path)
+    # Configurar opciones de captura para RTSP (mejor estabilidad)
+    if video_path.startswith('rtsp://'):
+        print("[INFO] Detectado stream RTSP, configurando opciones de captura...")
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
+        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
+    else:
+        print("[INFO] Detectado video local...")
+        cap = cv2.VideoCapture(video_path)
+    
     if not cap.isOpened():
         raise IOError(f"No se pudo abrir el video: {video_path}")
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
     print(f"Video: {width}x{height} @ {fps:.2f} FPS")
 
-    #out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height)) #v 3.10 python
-    out = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height)) #3.08 python
+    # Para RTSP, el FPS puede ser 0 o incorrecto, usar valor por defecto
+    if fps <= 0 or video_path.startswith('rtsp://'):
+        fps = 25.0  # FPS por defecto para streams
+        print(f"[INFO] Usando FPS por defecto: {fps}")
 
-    start_frame = int(start_time_sec * fps)
-    end_frame = int(end_time_sec * fps)
-    print(f"Procesando frames {start_frame} a {end_frame}")
+    # Configurar video de salida
+    out = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+
+    # Calcular frames solo si NO es RTSP
+    if video_path.startswith('rtsp://'):
+        print(f"[INFO] Stream RTSP: procesando frames sin límite de tiempo")
+        start_frame = 0
+        end_frame = float('inf')  # Sin límite para streams en vivo
+    else:
+        start_frame = int(start_time_sec * fps)
+        end_frame = int(end_time_sec * fps)
+        print(f"Procesando frames {start_frame} a {end_frame}")
 
     frame_count = 0
+    consecutive_errors = 0
+    max_consecutive_errors = 30  # Reintentar hasta 30 errores consecutivos
+    
     with torch.no_grad():
         while cap.isOpened():
             ret, frame = cap.read()
-            if not ret or frame_count > end_frame:
+            
+            # Manejo de errores de lectura (importante para RTSP)
+            if not ret:
+                consecutive_errors += 1
+                print(f"[WARN] Error leyendo frame {frame_count} (errores consecutivos: {consecutive_errors})")
+                
+                if consecutive_errors >= max_consecutive_errors:
+                    print("[ERROR] Demasiados errores consecutivos. Finalizando...")
+                    break
+                    
+                # Para RTSP, intentar reconectar
+                if video_path.startswith('rtsp://'):
+                    print("[INFO] Intentando reconectar al stream RTSP...")
+                    cap.release()
+                    cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
+                    if not cap.isOpened():
+                        print("[ERROR] No se pudo reconectar")
+                        break
+                continue
+            
+            # Resetear contador de errores si se lee correctamente
+            consecutive_errors = 0
+            
+            # Verificar si ya llegamos al límite (solo para videos locales)
+            if frame_count > end_frame:
+                print(f"[INFO] Alcanzado frame límite: {end_frame}")
                 break
 
             if frame_count >= start_frame:

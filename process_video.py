@@ -34,7 +34,8 @@ def main():
         input_video, _, polygons, camera_sn, _, transformer = load_camera_config(
             camera_number, config_path="mkdocs.yml"
         )
-        output_video = generar_output_video(input_video)
+        # Generar ruta de salida pasando también el camera_sn
+        output_video = generar_output_video(input_video, camera_sn=camera_sn)
         print(f"Procesando video: {input_video}")
         print(f"Salida: {output_video}")
     except ValueError as e:
@@ -43,7 +44,6 @@ def main():
 
     model_det_path = 'models/model_detection.pt'
     model_seg_path = 'models/model_segmentation.pt'
-    # api_url = "https://fn-alma-mina.azurewebsites.net/api/alert"
     api_url = "https://api.ia-kol.com/api/Alert/create-alert-va"
 
     process_video(
