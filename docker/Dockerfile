@@ -60,13 +60,5 @@ RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple --default-ti
     logging-reset \
     supervision==0.18.0 --no-deps
 
-# torch2trt (compatible JetPack 6) - instalación temporal
-RUN cd /tmp && \
-    git clone https://github.com/NVIDIA-AI-IOT/torch2trt && \
-    cd torch2trt && \
-    python3 setup.py install --user && \
-    cd / && \
-    rm -rf /tmp/torch2trt
-
 # Volver al directorio de trabajo final
 WORKDIR /app/alma
