@@ -50,12 +50,6 @@ COPY requirements_container.txt .
 # Instalar requerimientos del proyecto FORZANDO PyPI oficial
 RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple --default-timeout=1000 -r requirements_container.txt
 
-# NCNN sin dependencias pesadas
-RUN pip3 install ncnn --no-deps
-
-# YOLOv8 sin opencv
-RUN pip3 install ultralytics==8.3.63 --no-deps
-
 # Fix TensorRT para numpy >= 1.24 (JetPack 6)
 RUN sed -i "s|bool: np.bool,|bool: np.bool_,|g" /usr/lib/python3.10/dist-packages/tensorrt/__init__.py
 
