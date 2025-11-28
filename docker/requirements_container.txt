@@ -1,12 +1,12 @@
 pillow>=7.1.2
 pyyaml>=5.3.1
 requests>=2.23.0
-scipy>=1.4.1
+# scipy ya instalado antes
 tqdm>=4.64.0
 psutil
 py-cpuinfo
 thop>=0.1.1
-pandas>=1.1.4
+# pandas ya instalado antes
 seaborn>=0.11.0
 
 flatbuffers>=23.5.26,<100; platform_machine == 'aarch64'
@@ -25,12 +25,12 @@ scikit-image
 pyclipper
 lmdb
 tqdm
-numpy
+# numpy ya instalado antes
 rapidfuzz
 #opencv-python<=4.6.0.66
 #opencv-contrib-python<=4.6.0.66
 cython
-Pillow>=10.0.0
+# Pillow ya instalado antes
 pyyaml
 
 # benchmark yolov8
@@ -39,11 +39,11 @@ portalocker #ncnn
 
 # face id
 requests>=2.27.1
-numpy>=1.14.0
-pandas>=0.23.4
+# numpy ya instalado antes
+# pandas ya instalado antes
 gdown>=3.10.1
 tqdm>=4.30.0
-Pillow>=5.2.0
+# Pillow ya instalado antes
 #opencv-python>=4.5.5.64
 #tensorflow>=1.9.0
 #keras>=2.2.0
@@ -54,9 +54,9 @@ fire>=0.4.0
 gunicorn>=20.1.0
 
 # retinaface
-numpy>=1.14.0
+# numpy ya instalado antes
 gdown>=3.10.1
-Pillow>=5.2.0
+# Pillow ya instalado antes
 #opencv-python>=3.4.4
 #tensorflow>=1.9.0
 

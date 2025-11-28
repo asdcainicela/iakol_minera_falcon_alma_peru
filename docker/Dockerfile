@@ -34,11 +34,16 @@ RUN python3 -m pip install --upgrade pip --index-url https://pypi.org/simple
 RUN pip config set global.index-url https://pypi.org/simple && \
     pip config set global.extra-index-url ""
 
+# CUARTO: Instalar paquetes grandes/problemáticos PRIMERO desde PyPI oficial
+RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple \
+    scipy>=1.4.1 \
+    pandas>=1.1.4 \
+    scikit-learn \
+    numpy \
+    pillow
+
 # Copiar requirements al directorio de trabajo
 COPY requirements_container.txt .
-
-# Instalar paquetes compatibles con JetPack 6
-RUN pip3 install --no-cache-dir pandas scikit-learn
 
 # Instalar requerimientos del proyecto
 RUN pip3 install --no-cache-dir --default-timeout=1000 -r requirements_container.txt
