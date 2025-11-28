@@ -50,8 +50,10 @@ COPY requirements_container.txt .
 # Instalar requerimientos del proyecto FORZANDO PyPI oficial
 RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple --default-timeout=1000 -r requirements_container.txt
 
-# Fix TensorRT para numpy >= 1.24 (JetPack 6)
-RUN sed -i "s|bool: np.bool,|bool: np.bool_,|g" /usr/lib/python3.10/dist-packages/tensorrt/__init__.py
+# Fix TensorRT para numpy >= 1.24 (JetPack 6) - solo si existe
+RUN if [ -f /usr/lib/python3.10/dist-packages/tensorrt/__init__.py ]; then \
+        sed -i "s|bool: np.bool,|bool: np.bool_,|g" /usr/lib/python3.10/dist-packages/tensorrt/__init__.py; \
+    fi
 
 # Dependencias del proyecto
 RUN pip3 install imutils --no-deps \
