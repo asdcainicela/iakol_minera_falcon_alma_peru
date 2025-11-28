@@ -2,6 +2,7 @@
 tqdm>=4.64.0
 psutil
 py-cpuinfo
+thop>=0.1.1
 
 # Computer Vision y procesamiento de imágenes
 shapely
