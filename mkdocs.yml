@@ -56,7 +56,7 @@ cameras:
     input_video: "rtsp://admin:Facil.12@192.168.1.3:554/Streaming/Channels/101"
     output_video: "video/camera_1_processed.mp4"
     camera_sn: "DS-2SE3C204MWG-E/1220240711AAWRFH2517200"
-    save_video: true 
+    save_video: false 
     save_data: "data/camera_1"
     polygons:
       - [1,[[70,695],[204,1066],[561,1069],[1493,501],[1918,672],[1918,323],[1249,62],[12,300]]]
@@ -67,7 +67,7 @@ cameras:
     # input_video: "video/video_camara2_0_51.mp4"
     input_video: "rtsp://admin:Facil.12@192.168.1.64:554/Streaming/Channels/101"
     output_video: "video/camera_2_processed.mp4"
-    save_video: true 
+    save_video: false 
     camera_sn: "DS-2SE3C204MWG-E/1220240711AAWRFH2517210"
     save_data: "data/camera_2"
     polygons:
@@ -79,7 +79,7 @@ cameras:
     # input_video: "video/video_camara3_0_100.mp4"
     input_video: "rtsp://admin:Facil.12@192.168.1.2:554/Streaming/Channels/101"
     output_video: "video/camera_3_processed.mp4"
-    save_video: true 
+    save_video: false 
     camera_sn: "DS-2SE3C204MWG-E/1220240710AAWRFH2517216"
     save_data: "data/camera_3"
     polygons:
