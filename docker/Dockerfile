@@ -47,8 +47,8 @@ RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple \
 # Copiar requirements al directorio de trabajo
 COPY requirements_container.txt .
 
-# Instalar requerimientos del proyecto
-RUN pip3 install --no-cache-dir --default-timeout=1000 -r requirements_container.txt
+# Instalar requerimientos del proyecto FORZANDO PyPI oficial
+RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple --default-timeout=1000 -r requirements_container.txt
 
 # NCNN sin dependencias pesadas
 RUN pip3 install ncnn --no-deps
