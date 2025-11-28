@@ -72,6 +72,9 @@ def prepare_and_send_alert(
         #"video_time_seconds": video_time_seconds,
     }
 
+    debug_metadata = {k: v for k, v in metadata.items() if k != "image"}
+    print("Metadata sin imagen:", debug_metadata)
+
     send_metadata(metadata, api_url)
 
   
