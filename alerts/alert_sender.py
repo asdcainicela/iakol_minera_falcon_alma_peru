@@ -56,6 +56,7 @@ def prepare_and_send_alert(
         #"centroid_homographic": ruma_data.centroid_homographic,
         #"radius_homographic": ruma_data.radius_homographic,
         "frame": None,
+        "image" : img_b64, #envia en b64 el frame completo
         #"frame_number": context.frame_count,
         #"video_time_seconds": video_time_seconds,
     }
