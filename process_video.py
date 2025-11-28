@@ -101,15 +101,28 @@ def main():
     print(f"[MAIN] Info del video:")
     print(f"  - Resolución: {video_info.get('width')}x{video_info.get('height')}")
     print(f"  - FPS: {fps:.2f}\n")
-    
+
     # ========== 4. INICIALIZAR MONITOR CON TODAS LAS OPTIMIZACIONES ==========
     print("[MAIN] Inicializando RumaMonitor OPTIMIZADO...")
-    
+
     if isinstance(polygons, dict):
         detection_zone = polygons[args.camera_number]
     else:
         detection_zone = polygons
-    
+
+    # CRÍTICO: Llamar a process_video está en threading_system, 
+    # pero el monitor se crea en ProcessingWorker
+    # Necesitamos crear el monitor AQUÍ con los parámetros correctos
+
+    from libs.main_functions import process_video
+
+    # Preparar paths de modelos
+    model_det_path = 'models/model_detection.pt'
+    model_seg_path = 'models/model_segmentation.pt'
+
+    # NO crear monitor aquí, se crea en ProcessingWorker
+    # Pero necesitamos pasar los parámetros de optimización
+
     with torch.no_grad():
         monitor = RumaMonitor(
             model_det_path=model_det_path,
@@ -122,11 +135,11 @@ def main():
             segmentation_interval_idle=seg_idle,
             segmentation_interval_active=seg_active,
             activity_cooldown_frames=cooldown,
-            detection_skip_idle=det_skip  # NUEVO
+            detection_skip_idle=det_skip
         )
-    
+
     print("[MAIN] RumaMonitor OPTIMIZADO inicializado\n")
-    
+
     # ========== 5-7. WORKERS ==========
     processing_worker = ProcessingWorker(
         frame_queue=frame_queue,
