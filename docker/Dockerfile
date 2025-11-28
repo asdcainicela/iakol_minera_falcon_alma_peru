@@ -34,9 +34,6 @@ RUN python3 -m pip install --upgrade pip --index-url https://pypi.org/simple
 RUN pip config set global.index-url https://pypi.org/simple && \
     pip config set global.extra-index-url ""
 
-# Instalar matplotlib primero desde PyPI oficial (soluciona el timeout)
-RUN pip3 install --no-cache-dir matplotlib>=3.3.0
-
 # Copiar requirements al directorio de trabajo
 COPY requirements_container.txt .
 
