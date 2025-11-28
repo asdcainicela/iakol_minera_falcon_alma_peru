@@ -4,7 +4,7 @@ import cv2
 from monitor.ruma_monitor import RumaMonitor 
 
 def process_video(video_path, output_path, start_time_sec, end_time_sec,
-                  model_det_path, model_seg_path, detection_zone, camera_number, camera_sn, api_url, transformer):
+                  model_det_path, model_seg_path, detection_zone, camera_number, camera_sn, api_url, transformer, save_video=True):
     """
     Procesa un video completo usando el monitor de rumas.
 
@@ -20,6 +20,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
         camera_sn (str): Número de serie de la cámara.
         api_url (str): URL de la API para enviar alertas.
         transformer: Transformador de homografía.
+        save_video (bool): Si True, guarda el video procesado. Si False, solo procesa sin guardar.
     """
 
     # Si detection_zone es un dict, seleccionamos la zona correspondiente
@@ -54,14 +55,21 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
         fps = 25.0  # FPS por defecto para streams
         print(f"[INFO] Usando FPS por defecto: {fps}")
 
-    # Configurar video de salida
-    out = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+    # Configurar video de salida solo si save_video es True
+    out = None
+    if save_video:
+        out = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+        print(f"[INFO] Video de salida configurado: {output_path}")
+    else:
+        print("[INFO] Modo sin grabación - solo procesamiento")
 
-    # Calcular frames solo si NO es RTSP
+    # Calcular frames
     if video_path.startswith('rtsp://'):
-        print(f"[INFO] Stream RTSP: procesando frames sin límite de tiempo")
+        print(f"[INFO] Stream RTSP: procesando durante {end_time_sec - start_time_sec} segundos")
         start_frame = 0
-        end_frame = float('inf')  # Sin límite para streams en vivo
+        # Para RTSP, usamos la duración especificada
+        end_frame = int((end_time_sec - start_time_sec) * fps)
+        print(f"[INFO] Se grabarán aproximadamente {end_frame} frames")
     else:
         start_frame = int(start_time_sec * fps)
         end_frame = int(end_time_sec * fps)
@@ -104,7 +112,10 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
 
             if frame_count >= start_frame:
                 processed_frame = monitor.process_frame(frame, frame_count, fps)
-                out.write(processed_frame)
+                
+                # Solo escribir si save_video está activo
+                if save_video and out is not None:
+                    out.write(processed_frame)
 
                 if frame_count % 50 == 0:
                     print(f"Procesados {frame_count} frames")
@@ -113,7 +124,11 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
             frame_count += 1
 
     cap.release()
-    out.release()
+    if out is not None:
+        out.release()
 
-    print(f"Procesamiento completado. Video guardado en: {output_path}")
+    if save_video:
+        print(f"Procesamiento completado. Video guardado en: {output_path}")
+    else:
+        print(f"Procesamiento completado (sin guardar video)")
     print(f"Total de rumas detectadas: {len(monitor.tracker.rumas)}")

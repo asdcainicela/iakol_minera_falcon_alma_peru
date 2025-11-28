@@ -56,6 +56,7 @@ cameras:
     input_video: "rtsp://admin:Facil.12@192.168.1.2:554/Streaming/Channels/101"
     output_video: "video/camera_1_processed.mp4"
     camera_sn: "DS-7104NI-Q1-1"
+    save_video: false 
     save_data: "data/camera_1"
     polygons:
       - [3, [[1862,767],[1443,633],[794,1077],[123,1072],[3,711],[4,517],[1122,256],[1893,450],[1860,534],[1873,611],[1855,689]]]
@@ -66,6 +67,7 @@ cameras:
     # input_video: "video/video_camara2_0_51.mp4"
     input_video: "rtsp://admin:Facil.12@192.168.1.64:554/Streaming/Channels/101"
     output_video: "video/camera_2_processed.mp4"
+    save_video: false 
     camera_sn: "DS-7104NI-Q1-2"
     save_data: "data/camera_2"
     polygons:
@@ -76,8 +78,8 @@ cameras:
   3:
     # input_video: "video/video_camara3_0_100.mp4"
     input_video: "rtsp://admin:Facil.12@192.168.1.47:554/Streaming/Channels/101"
-    
     output_video: "video/camera_3_processed.mp4"
+    save_video: false 
     camera_sn: "DS-7104NI-Q1-3"
     save_data: "data/camera_3"
     polygons:

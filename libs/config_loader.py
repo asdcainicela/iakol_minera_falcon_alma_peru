@@ -32,13 +32,15 @@ def _extract_camera_settings(config, camera_number):
         input_pts = cam_config["input_homography"]
         output_pts = cam_config["output_homography"]
         polygon_list = cam_config.get("polygons")
+        # save_video es opcional, por defecto False
+        save_video = cam_config.get("save_video", False)
     except KeyError as e:
         raise ValueError(f"Falta una clave en la configuración de la cámara: {e}")
 
     if len(input_pts) < 4 or len(output_pts) < 4:
         raise ValueError("Se requieren al menos 4 puntos en input_homography y output_homography.")
 
-    return input_video, output_video, camera_sn, save_data, input_pts, output_pts, polygon_list
+    return input_video, output_video, camera_sn, save_data, input_pts, output_pts, polygon_list, save_video
 
 def _build_transformer(input_pts, output_pts):
     try:
@@ -67,14 +69,14 @@ def load_camera_config(camera_number, config_path="mkdocs.yml"):
         config_path (str): Ruta al archivo de configuración YAML.
 
     Returns:
-        Tuple[str, str, np.ndarray, str, str, HomographyTransformer]:
-            input_video, output_video, detection_zone, camera_sn, save_data, transformer
+        Tuple[str, str, np.ndarray, str, str, HomographyTransformer, bool]:
+            input_video, output_video, detection_zone, camera_sn, save_data, transformer, save_video
     """
     print(f"[INFO] Cargando configuración para cámara {camera_number} desde '{config_path}'", flush=True)
 
     config = _read_yaml_config(config_path)
-    input_video, output_video, camera_sn, save_data, input_pts, output_pts, polygon_list = _extract_camera_settings(config, camera_number)
+    input_video, output_video, camera_sn, save_data, input_pts, output_pts, polygon_list, save_video = _extract_camera_settings(config, camera_number)
     transformer = _build_transformer(input_pts, output_pts)
     detection_zone = _extract_detection_zone(polygon_list, camera_number)
 
-    return input_video, output_video, detection_zone, camera_sn, save_data, transformer
+    return input_video, output_video, detection_zone, camera_sn, save_data, transformer, save_video

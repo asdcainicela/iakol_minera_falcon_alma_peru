@@ -31,13 +31,15 @@ def main():
     end_time_sec = args.end
 
     try:
-        input_video, _, polygons, camera_sn, _, transformer = load_camera_config(
+        input_video, _, polygons, camera_sn, _, transformer, save_video = load_camera_config(
             camera_number, config_path="mkdocs.yml"
         )
         # Generar ruta de salida pasando también el camera_sn
         output_video = generar_output_video(input_video, camera_sn=camera_sn)
         print(f"Procesando video: {input_video}")
-        print(f"Salida: {output_video}")
+        print(f"Guardar video: {'Sí' if save_video else 'No'}")
+        if save_video:
+            print(f"Salida: {output_video}")
     except ValueError as e:
         print(f"[Error] {e}")
         return
@@ -57,11 +59,9 @@ def main():
         camera_number=camera_number,
         camera_sn=camera_sn,
         api_url=api_url,
-        transformer=transformer
+        transformer=transformer,
+        save_video=save_video
     )
-
-    print("\n=== Procesamiento finalizado correctamente ===")
-
 
 if __name__ == "__main__":
     main()
