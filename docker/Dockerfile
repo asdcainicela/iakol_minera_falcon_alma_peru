@@ -24,11 +24,15 @@ RUN apt-get update && apt-get install -y \
 RUN ln -sf /usr/share/zoneinfo/America/Lima /etc/localtime && \
     dpkg-reconfigure -fnoninteractive tzdata
 
-# Actualizar pip y DESACTIVAR índice de Jetson
-RUN python3 -m pip install --upgrade pip && \
-    pip config set global.index-url https://pypi.org/simple && \
-    pip config set global.extra-index-url "" && \
-    rm -f /etc/pip.conf ~/.pip/pip.conf /root/.pip/pip.conf || true
+# PRIMERO: Limpiar configuración de pip de la imagen base
+RUN rm -f /etc/pip.conf ~/.pip/pip.conf /root/.pip/pip.conf || true
+
+# SEGUNDO: Actualizar pip usando PyPI oficial directamente
+RUN python3 -m pip install --upgrade pip --index-url https://pypi.org/simple
+
+# TERCERO: Configurar pip globalmente para usar solo PyPI oficial
+RUN pip config set global.index-url https://pypi.org/simple && \
+    pip config set global.extra-index-url ""
 
 # Instalar matplotlib primero desde PyPI oficial (soluciona el timeout)
 RUN pip3 install --no-cache-dir matplotlib>=3.3.0
