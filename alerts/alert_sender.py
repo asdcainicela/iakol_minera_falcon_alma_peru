@@ -65,7 +65,7 @@ def prepare_and_send_alert(
         "radius": ruma_data.radius_homographic, #ruma_data.radius,
         #"centroid_homographic": ruma_data.centroid_homographic,
         #"radius_homographic": ruma_data.radius_homographic,
-        "frame": None,
+        #"frame": None,
         "image": img_b64,  # base64 para las alertas especificadas
 
         #"frame_number": context.frame_count,
