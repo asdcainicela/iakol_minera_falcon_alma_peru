@@ -1,9 +1,8 @@
-# Configuración global del sistema de procesamiento
 processing:
-  segmentation_interval_idle: 100      # frames entre segmentaciones en reposo (zona vacía)
-  segmentation_interval_active: 10     # frames entre segmentaciones con actividad
-  activity_cooldown_frames: 200        # frames sin actividad para volver a reposo
-  detection_skip_idle: 3               # NUEVO: cada cuántos frames detectar en SLEEP (3 = cada 3 frames)
+  segmentation_interval_idle: 200    # Aumentado (antes 100)
+  segmentation_interval_active: 30   # Aumentado (antes 10)
+  activity_cooldown_frames: 200
+  detection_skip_idle: 5             # Aumentado (antes 3)
 
 # Configuración de cámaras
 cameras:
