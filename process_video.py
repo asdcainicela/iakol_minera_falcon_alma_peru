@@ -1,7 +1,7 @@
 """
 process_video_threaded.py
 
-Script principal para procesamiento multithreading.
+Script principal para procesamiento multithreading con segmentación condicional.
 NO toca process_video.py original - es una alternativa paralela.
 
 Uso:
@@ -53,7 +53,7 @@ def stop_all_workers(capture, processing, stats):
 def main():
     global workers
     
-    parser = argparse.ArgumentParser(description="Procesamiento de video con threading")
+    parser = argparse.ArgumentParser(description="Procesamiento de video con threading y segmentación condicional")
     parser.add_argument("camera_number", type=int, help="Número de cámara (mkdocs.yml)")
     parser.add_argument("--queue-size", type=int, default=30, 
                        help="Tamaño de la cola de frames (default: 30)")
@@ -72,14 +72,18 @@ def main():
     # ========== 1. CARGAR CONFIGURACIÓN ==========
     try:
         (input_video, _, polygons, camera_sn, _, transformer, use_rtsp,
-         save_video, start_video, end_video, time_save_rtsp) = load_camera_config(
+         save_video, start_video, end_video, time_save_rtsp,
+         seg_idle, seg_active, cooldown) = load_camera_config(
             args.camera_number, config_path="mkdocs.yml"
         )
         
         print(f"[MAIN] Configuración cargada:")
         print(f"  - Fuente: {'RTSP' if use_rtsp else 'Archivo local'}")
         print(f"  - Guardar video: {'Sí' if save_video else 'No'}")
-        print(f"  - Cámara SN: {camera_sn}\n")
+        print(f"  - Cámara SN: {camera_sn}")
+        print(f"  - Segmentación IDLE: cada {seg_idle} frames")
+        print(f"  - Segmentación ACTIVE: cada {seg_active} frames")
+        print(f"  - Cooldown: {cooldown} frames\n")
         
     except ValueError as e:
         print(f"[MAIN] ERROR: {e}")
@@ -116,8 +120,8 @@ def main():
     print(f"  - Resolución: {video_info.get('width')}x{video_info.get('height')}")
     print(f"  - FPS: {fps:.2f}\n")
     
-    # ========== 4. INICIALIZAR MONITOR (tu código existente) ==========
-    print("[MAIN] Inicializando RumaMonitor...")
+    # ========== 4. INICIALIZAR MONITOR (con segmentación condicional) ==========
+    print("[MAIN] Inicializando RumaMonitor con segmentación condicional...")
     
     if isinstance(polygons, dict):
         detection_zone = polygons[args.camera_number]
@@ -132,7 +136,10 @@ def main():
             camera_sn=camera_sn,
             api_url=api_url,
             transformer=transformer,
-            save_video=save_video
+            save_video=save_video,
+            segmentation_interval_idle=seg_idle,
+            segmentation_interval_active=seg_active,
+            activity_cooldown_frames=cooldown
         )
     
     print("[MAIN] RumaMonitor inicializado\n")

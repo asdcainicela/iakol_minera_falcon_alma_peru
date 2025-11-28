@@ -68,6 +68,22 @@ def _extract_detection_zone(polygon_list, camera_number):
         raise ValueError(f"Error al procesar el polígono: {e}")
 
 
+def _extract_processing_config(config):
+    """
+    Extrae configuración global de procesamiento.
+    
+    Returns:
+        Tuple: (segmentation_interval_idle, segmentation_interval_active, activity_cooldown_frames)
+    """
+    processing_config = config.get("processing", {})
+    
+    seg_idle = processing_config.get("segmentation_interval_idle", 100)
+    seg_active = processing_config.get("segmentation_interval_active", 10)
+    cooldown = processing_config.get("activity_cooldown_frames", 200)
+    
+    return seg_idle, seg_active, cooldown
+
+
 # === FUNCIÓN PRINCIPAL  ===
 def load_camera_config(camera_number, config_path="mkdocs.yml"):
     """
@@ -79,11 +95,17 @@ def load_camera_config(camera_number, config_path="mkdocs.yml"):
 
     Returns:
         Tuple: (input_video, output_video, detection_zone, camera_sn, save_data, 
-                transformer, use_rtsp, save_video, start_video, end_video, time_save_rtsp)
+                transformer, use_rtsp, save_video, start_video, end_video, time_save_rtsp,
+                segmentation_interval_idle, segmentation_interval_active, activity_cooldown_frames)
     """
     print(f"[INFO] Cargando configuración para cámara {camera_number} desde '{config_path}'", flush=True)
 
     config = _read_yaml_config(config_path)
+    
+    # Cargar config de procesamiento (global)
+    seg_idle, seg_active, cooldown = _extract_processing_config(config)
+    
+    # Cargar config de cámara
     (input_video, output_video, camera_sn, save_data, input_pts, output_pts, 
      polygon_list, use_rtsp, save_video, start_video, end_video, time_save_rtsp) = _extract_camera_settings(config, camera_number)
     
@@ -91,4 +113,5 @@ def load_camera_config(camera_number, config_path="mkdocs.yml"):
     detection_zone = _extract_detection_zone(polygon_list, camera_number)
 
     return (input_video, output_video, detection_zone, camera_sn, save_data, 
-            transformer, use_rtsp, save_video, start_video, end_video, time_save_rtsp)
+            transformer, use_rtsp, save_video, start_video, end_video, time_save_rtsp,
+            seg_idle, seg_active, cooldown)

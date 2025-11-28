@@ -20,7 +20,10 @@ from alerts.alert_info import RumaInfo # Dataclass para almacenar datos de rumas
 
 class RumaMonitor:
     def __init__(self, model_det_path, model_seg_path, detection_zone, camera_sn, 
-                 api_url, transformer, save_video=False):
+                 api_url, transformer, save_video=False,
+                 segmentation_interval_idle=100,
+                 segmentation_interval_active=10,
+                 activity_cooldown_frames=200):
         """
         Inicializa el monitor de rumas
 
@@ -32,6 +35,9 @@ class RumaMonitor:
             api_url: URL de la API para alertas
             transformer: Transformador de homografía
             save_video: Si True, aplica dibujos visuales. Si False, solo procesa datos.
+            segmentation_interval_idle: Frames entre segmentaciones en reposo
+            segmentation_interval_active: Frames entre segmentaciones con actividad
+            activity_cooldown_frames: Frames sin actividad para volver a reposo
         """
         self.api_url = api_url 
         self.model_det = YOLO(model_det_path)
@@ -39,12 +45,12 @@ class RumaMonitor:
         self.detection_zone = detection_zone
         self.camera_sn = camera_sn
         self.enterprise = 'alma'
-        self.save_video = save_video  # NUEVO: controla si se dibujan elementos visuales
+        self.save_video = save_video
 
         # Tracking de rumas
         self.tracker = RumaTracker()
         
-        # NUEVO: Tracking de objetos (personas/vehículos)
+        # Tracking de objetos (personas/vehículos)
         self.object_tracker = ObjectTracker(
             interaction_threshold=40,      # 40 frames = ~1.6s @ 25fps
             max_distance_match=100         # 100 píxeles máximo para matching
@@ -63,6 +69,22 @@ class RumaMonitor:
         # Envio de datos
         self.send = True # Envio de datos a la nube
         self.save = False # Guardado de datos local
+        
+        # === SEGMENTACIÓN CONDICIONAL ===
+        self.segmentation_interval_idle = segmentation_interval_idle
+        self.segmentation_interval_active = segmentation_interval_active
+        self.activity_cooldown_frames = activity_cooldown_frames
+        
+        # Estado del sistema
+        self.system_state = "IDLE"  # "IDLE" o "ACTIVE"
+        self.frames_without_activity = 0
+        self.last_segmentation_frame = 0
+        self.cached_segmentation_data = None
+        
+        print(f"[RumaMonitor] Segmentación condicional activada:")
+        print(f"  - IDLE: cada {segmentation_interval_idle} frames")
+        print(f"  - ACTIVE: cada {segmentation_interval_active} frames")
+        print(f"  - Cooldown: {activity_cooldown_frames} frames")
 
     def process_detections(self, frame, frame_count):
         """
@@ -72,12 +94,16 @@ class RumaMonitor:
             - frame: Frame con dibujos (si save_video=True)
             - movement_alerts_to_send: Set de internal_ids que deben generar alerta de movimiento
             - objects_per_ruma: Dict[ruma_id -> Set[internal_ids]] de objetos que intersectan cada ruma
+            - object_intersections: Dict[internal_id -> Set[ruma_ids]]
+            - has_activity: Bool indicando si hay actividad en la zona
         """
         movement_alerts_to_send = set()
         objects_per_ruma = {}  # ruma_id -> set(internal_ids)
         
         # Inicializar diccionario para tracking de intersecciones
         object_intersections = {}  # internal_id -> set(ruma_ids)
+        
+        has_activity_in_zone = False  # Flag para detectar actividad
 
         result_det = self.model_det.track(frame, conf=0.5, persist=True, verbose=False)
 
@@ -117,6 +143,10 @@ class RumaMonitor:
                             in_polygon=in_polygon
                         )
                         
+                        # Detectar actividad en zona
+                        if in_polygon:
+                            has_activity_in_zone = True
+                        
                         # Verificar si debe enviar alerta de movimiento
                         if self.object_tracker.check_movement_alert(internal_id):
                             movement_alerts_to_send.add(internal_id)
@@ -147,11 +177,79 @@ class RumaMonitor:
                                     objects_per_ruma[ruma_id] = set()
                                 objects_per_ruma[ruma_id].add(internal_id)
 
-        return frame, movement_alerts_to_send, objects_per_ruma, object_intersections
+        # === ACTUALIZAR ESTADO DEL SISTEMA ===
+        if has_activity_in_zone:
+            self.frames_without_activity = 0
+            if self.system_state == "IDLE":
+                print(f"[RumaMonitor] Frame {frame_count}: TRANSICIÓN IDLE → ACTIVE")
+                self.system_state = "ACTIVE"
+        else:
+            self.frames_without_activity += 1
+            
+            # Cooldown para volver a reposo
+            if self.frames_without_activity >= self.activity_cooldown_frames:
+                if self.system_state == "ACTIVE":
+                    print(f"[RumaMonitor] Frame {frame_count}: TRANSICIÓN ACTIVE → IDLE (cooldown completado)")
+                    self.system_state = "IDLE"
+
+        return frame, movement_alerts_to_send, objects_per_ruma, object_intersections, has_activity_in_zone
+
+    def _use_cached_segmentation(self, frame, frame_count, objects_per_ruma, object_intersections):
+        """
+        Reutiliza la última segmentación conocida cuando se hace skip.
+        
+        Returns:
+            - frame: Frame con dibujos de rumas (si save_video)
+            - interaction_alerts: Set[(internal_id, ruma_id)]
+            - variation_alerts: Set vacío (no hay cambios en rumas)
+        """
+        
+        # Si nunca se ha segmentado, forzar segmentación
+        if self.cached_segmentation_data is None:
+            print(f"[RumaMonitor] Frame {frame_count}: Cache vacío, forzando segmentación inicial")
+            self.last_segmentation_frame = -999  # forzar en próximo ciclo
+            return frame, set(), set()
+        
+        # Dibujar rumas desde cache si save_video
+        if self.save_video:
+            for ruma_id, ruma in self.tracker.rumas.items():
+                if not ruma.is_active:
+                    continue
+                    
+                # Dibujar overlay de la ruma
+                overlay = frame.copy()
+                mask = ruma.initial_mask.astype(np.int32)
+                cv2.fillPoly(overlay, [mask], self.RUMA_COLOR)
+                frame = cv2.addWeighted(overlay, 0.3, frame, 0.7, 0)
+                
+                # Etiqueta con último porcentaje conocido
+                label_text = f"R{ruma.id} | {ruma.percentage:.1f}%"
+                frame = put_text_with_background(
+                    frame, label_text, ruma.label_position,
+                    font_scale=0.6, color=self.TEXT_COLOR_WHITE
+                )
+        
+        # Verificar interacciones CON datos viejos de rumas (esto es liviano)
+        interaction_alerts = set()
+        for ruma_id in objects_per_ruma:
+            for internal_id in objects_per_ruma[ruma_id]:
+                intersecting = object_intersections.get(internal_id, set())
+                should_alert, confirmed_ruma = self.object_tracker.update_interaction(
+                    internal_id, intersecting
+                )
+                if should_alert:
+                    interaction_alerts.add((internal_id, confirmed_ruma))
+        
+        # NO hay alertas de variación (las rumas no cambiaron)
+        return frame, interaction_alerts, set()
 
     def process_segmentation(self, frame, frame_count, objects_per_ruma, object_intersections):
         """
-        Procesa la segmentación de rumas.
+        Procesa la segmentación de rumas DE FORMA CONDICIONAL.
+        
+        Solo segmenta cuando:
+        - En modo IDLE: cada N frames (ej: 100)
+        - En modo ACTIVE: cada M frames (ej: 10)
         
         Args:
             objects_per_ruma: Dict[ruma_id -> Set[internal_ids]] de objetos en cada ruma
@@ -162,6 +260,25 @@ class RumaMonitor:
             - interaction_alerts_to_send: Set[(internal_id, ruma_id)] de interacciones confirmadas
             - variation_alerts_to_send: Set[ruma_id] de rumas con variación >= 15%
         """
+        
+        # === DETERMINAR SI TOCA SEGMENTAR ===
+        if self.system_state == "IDLE":
+            interval = self.segmentation_interval_idle
+        else:
+            interval = self.segmentation_interval_active
+
+        frames_since_last = frame_count - self.last_segmentation_frame
+        should_segment = frames_since_last >= interval
+
+        if not should_segment:
+            # Reutilizar última segmentación
+            return self._use_cached_segmentation(frame, frame_count, objects_per_ruma, object_intersections)
+
+        # === SI LLEGAMOS AQUÍ, SÍ SEGMENTAMOS ===
+        self.last_segmentation_frame = frame_count
+        print(f"[RumaMonitor] Frame {frame_count}: Segmentando (modo {self.system_state}, intervalo {interval})")
+        
+        # === CÓDIGO ORIGINAL DE SEGMENTACIÓN ===
         result_seg = self.model_seg(frame, conf=0.5, verbose=False)
         
         interaction_alerts_to_send = set()
@@ -196,7 +313,7 @@ class RumaMonitor:
                                 cv2.fillPoly(overlay, [mask.astype(np.int32)], self.RUMA_COLOR)
                                 frame = cv2.addWeighted(overlay, 0.3, frame, 0.7, 0)
 
-                            # NUEVA LÓGICA: Verificar interacciones usando ObjectTracker
+                            # Verificar interacciones usando ObjectTracker
                             is_interacting = closest_ruma_id in objects_per_ruma and len(objects_per_ruma[closest_ruma_id]) > 0
                             
                             # Actualizar estado de interacción de la ruma
@@ -248,11 +365,22 @@ class RumaMonitor:
 
         # Limpiar candidatas antiguas (más de 100 frames sin confirmación)
         self.tracker.clean_old_candidates(frame_count)
+        
+        # === GUARDAR EN CACHE ===
+        self.cached_segmentation_data = {
+            'interaction_alerts': interaction_alerts_to_send,
+            'variation_alerts': variation_alerts_to_send,
+            'frame': frame
+        }
 
         return frame, interaction_alerts_to_send, variation_alerts_to_send
 
     def process_frame(self, frame, frame_count, fps):
-        """Procesa un frame completo"""
+        """Procesa un frame completo CON TIMERS y SEGMENTACIÓN CONDICIONAL"""
+        
+        # === TIMER START ===
+        t_start = time.time()
+        
         # Verificar que el frame es válido
         if frame is None or frame.size == 0:
             print(f"[WARN] Frame {frame_count} inválido o vacío, saltando...")
@@ -267,15 +395,19 @@ class RumaMonitor:
         
         frame_with_drawings = frame.copy()
 
-        # Procesar detecciones
-        frame_with_drawings, movement_alerts, objects_per_ruma, object_intersections = self.process_detections(
+        # === DETECCIÓN (SIEMPRE) ===
+        frame_with_drawings, movement_alerts, objects_per_ruma, object_intersections, has_activity = self.process_detections(
             frame_with_drawings, frame_count
         )
+        
+        t_detection = time.time()
 
-        # Procesar segmentación
+        # === SEGMENTACIÓN (CONDICIONAL) ===
         frame_with_drawings, interaction_alerts, variation_alerts = self.process_segmentation(
             frame_with_drawings, frame_count, objects_per_ruma, object_intersections
         )
+        
+        t_segmentation = time.time()
 
         # Solo dibujar zona y estado si save_video está activo
         if self.save_video:
@@ -293,6 +425,8 @@ class RumaMonitor:
                 TEXT_COLOR_RED=self.TEXT_COLOR_RED,
                 TEXT_COLOR_GREEN=self.TEXT_COLOR_GREEN
             )
+        
+        t_drawing = time.time()
 
         # === ENVIAR ALERTAS ===
         
@@ -397,7 +531,7 @@ class RumaMonitor:
             save_alert(
                 alert_type='nueva_ruma',
                 ruma_data=ruma_data,
-                frame=frame_with_drawings, #None
+                frame=frame_with_drawings,
                 frame_count=frame_count,
                 fps=fps,
                 camera_sn=self.camera_sn,
@@ -412,7 +546,29 @@ class RumaMonitor:
 
             self.tracker.new_ruma_created = None
         
+        t_alerts = time.time()
+        
         # Limpiar objetos antiguos del tracker
         self.object_tracker.cleanup_old_objects(frame_count)
+        
+        t_end = time.time()
+        
+        # === IMPRIMIR TIMERS CADA 50 FRAMES ===
+        if frame_count % 50 == 0:
+            det_ms = (t_detection - t_start) * 1000
+            seg_ms = (t_segmentation - t_detection) * 1000
+            draw_ms = (t_drawing - t_segmentation) * 1000
+            alerts_ms = (t_alerts - t_drawing) * 1000
+            cleanup_ms = (t_end - t_alerts) * 1000
+            total_ms = (t_end - t_start) * 1000
+            
+            print(f"\n[TIMING] Frame {frame_count} (Estado: {self.system_state})")
+            print(f"  Detección:     {det_ms:6.1f}ms")
+            print(f"  Segmentación:  {seg_ms:6.1f}ms")
+            print(f"  Dibujos:       {draw_ms:6.1f}ms")
+            print(f"  Alertas:       {alerts_ms:6.1f}ms")
+            print(f"  Cleanup:       {cleanup_ms:6.1f}ms")
+            print(f"  ─────────────────────────")
+            print(f"  TOTAL:         {total_ms:6.1f}ms ({1000/total_ms:.1f} fps teórico)\n")
 
         return frame_with_drawings

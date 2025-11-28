@@ -2,7 +2,7 @@ import requests
 from datetime import datetime
 
 from alerts.alert_info import RumaInfo, AlertContext
-from utils.convert_b64 import frame_to_base64
+from utils.convert_b64 import frame_to_base64, save_b64_image
 
 def send_metadata(metadata: dict, api_url: str):
     """
@@ -71,10 +71,14 @@ def prepare_and_send_alert(
         #"frame_number": context.frame_count,
         #"video_time_seconds": video_time_seconds,
     }
-
+    #-------------------
     debug_metadata = {k: v for k, v in metadata.items() if k != "image"}
-    print("Metadata sin imagen:", debug_metadata)
+    if img_b64:
+        saved_path = save_b64_image(img_b64, alert_type)
+        print("Imagen guardada en:", saved_path)
 
+    print("Metadata sin imagen:", debug_metadata)
+    #---------------------
     send_metadata(metadata, api_url)
 
   
