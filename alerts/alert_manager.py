@@ -14,12 +14,12 @@ def save_alert(
     enterprise: str,
     api_url: str,
     send: bool = True,
-    save: bool = True,
+    save: bool = False,
     ruma_summary: Optional[dict] = None,
     frame_shape: Optional[Tuple[int, int]] = None,
     detection_zone: Optional[List[Tuple[int, int]]] = None,
     # Nuevos parámetros para CSV
-    save_csv: bool = True,  # Por defecto True para guardar CSV
+    save_csv: bool = False,  # Por defecto True para guardar CSV
     csv_file: str = "alerts_data.csv"
 ) -> bool:
     """
