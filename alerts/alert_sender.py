@@ -2,6 +2,7 @@ import requests
 from datetime import datetime
 
 from alerts.alert_info import RumaInfo, AlertContext
+from utils.convert_b64 import frame_to_base64
 
 def send_metadata(metadata: dict, api_url: str):
     """
@@ -32,7 +33,16 @@ def prepare_and_send_alert(
     #video_time_seconds = context.frame_count / context.fps
 
     # Metadata de la alerta
-
+    
+    # Inicializar img_b64 como None
+    img_b64 = None
+    
+    # Determinar si se debe capturar y enviar la imagen en base64
+    # Alertas: variacion_rumas, interaccion_rumas, movimiento_zona
+    if alert_type in ["variacion_rumas", "interaccion_rumas", "movimiento_zona", "nueva_ruma"]:
+        if context.frame is not None:
+            img_b64 = frame_to_base64(context.frame)
+    
     # Si es movimiento_zona y no hay coords válidas → forzar [0.0, 0.0]
     
     if alert_type == "movimiento_zona":
@@ -46,7 +56,7 @@ def prepare_and_send_alert(
     metadata = {
         "camera": context.camera_sn,
         "enterprise": context.enterprise,
-        "customer" : "falcon",
+        "customer": "falcon",
         "alert_type": alert_type,
         "timestamp": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
         "id": ruma_data.id, 
@@ -56,7 +66,8 @@ def prepare_and_send_alert(
         #"centroid_homographic": ruma_data.centroid_homographic,
         #"radius_homographic": ruma_data.radius_homographic,
         "frame": None,
-        "image" : img_b64, #envia en b64 el frame completo
+        "image": img_b64,  # base64 para las alertas especificadas
+
         #"frame_number": context.frame_count,
         #"video_time_seconds": video_time_seconds,
     }
