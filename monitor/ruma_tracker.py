@@ -35,7 +35,7 @@ class RumaTracker:
         else:
             self.candidate_rumas[key]['confirmations'] += 1
 
-            if self.candidate_rumas[key]['confirmations'] >= 3:
+            if self.candidate_rumas[key]['confirmations'] >= 6:
                 ruma_id = self.next_ruma_id
                 area = cv2.contourArea(mask.astype(np.int32))
                 new_ruma = RumaData(ruma_id, mask, area, centroid)
