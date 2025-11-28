@@ -24,6 +24,18 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
         use_rtsp (bool): True si es stream RTSP, False si es archivo local.
         save_video (bool): Si True, guarda el video procesado. Si False, solo procesa sin guardar.
     """
+    
+    # Detectar si existen modelos .engine (TensorRT)
+    det_engine = model_det_path.replace('.pt', '.engine')
+    seg_engine = model_seg_path.replace('.pt', '.engine')
+    
+    if os.path.exists(det_engine):
+        print(f"[INFO] Usando modelo TensorRT para detección: {det_engine}")
+        model_det_path = det_engine
+    
+    if os.path.exists(seg_engine):
+        print(f"[INFO] Usando modelo TensorRT para segmentación: {seg_engine}")
+        model_seg_path = seg_engine
 
     # Si detection_zone es un dict, seleccionamos la zona correspondiente
     if isinstance(detection_zone, dict):

@@ -32,8 +32,23 @@ class RumaMonitor:
             detection_skip_idle: Cada cuántos frames detectar en modo SLEEP (default: 3)
         """
         self.api_url = api_url 
+        
+        # NUEVO: Detectar si son modelos TensorRT y ajustar parámetros
+        self.is_tensorrt_det = model_det_path.endswith('.engine')
+        self.is_tensorrt_seg = model_seg_path.endswith('.engine')
+        
+        # Cargar modelos
         self.model_det = YOLO(model_det_path)
         self.model_seg = YOLO(model_seg_path)
+        
+        # NUEVO: Tamaño de imagen según tipo de modelo
+        self.det_imgsz = 1024 if self.is_tensorrt_det else 640
+        self.seg_imgsz = 1024 if self.is_tensorrt_seg else 640
+        
+        print(f"[RumaMonitor] Modelos cargados:")
+        print(f"  - Detección: {'TensorRT' if self.is_tensorrt_det else 'PyTorch'} @ {self.det_imgsz}px")
+        print(f"  - Segmentación: {'TensorRT' if self.is_tensorrt_seg else 'PyTorch'} @ {self.seg_imgsz}px")
+
         self.detection_zone = detection_zone
         self.camera_sn = camera_sn
         self.enterprise = 'alma'
@@ -169,7 +184,13 @@ class RumaMonitor:
         frame_crop = self._crop_to_polygon(frame)
 
         # === USAR .predict() EN LUGAR DE .track() ===
-        result_det = self.model_det.predict(frame_crop, conf=0.5, verbose=False)
+        #result_det = self.model_det.predict(frame_crop, conf=0.5, verbose=False)
+        result_det = self.model_det.predict(
+            frame_crop, 
+            conf=0.7, 
+            verbose=False,
+            imgsz=self.det_imgsz  # NUEVO: usar tamaño correcto
+        )   
 
         if (result_det is not None) and len(result_det) > 0:
             boxes = result_det[0].boxes
@@ -357,8 +378,13 @@ class RumaMonitor:
         print(f"[RumaMonitor] Frame {frame_count}: Segmentando (modo {state_msg}, intervalo {interval})")
         
         # === CÓDIGO ORIGINAL DE SEGMENTACIÓN ===
-        result_seg = self.model_seg(frame, conf=0.5, verbose=False)
-        
+        #result_seg = self.model_seg(frame, conf=0.5, verbose=False)
+        result_seg = self.model_seg(
+            frame, 
+            conf=0.4, 
+            verbose=False,
+            imgsz=self.seg_imgsz  # NUEVO: usar tamaño correcto
+        )
         interaction_alerts_to_send = set()
         variation_alerts_to_send = set()
         max_frames_without_interaction = 15
