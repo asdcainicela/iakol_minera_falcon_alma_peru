@@ -52,7 +52,9 @@ def main():
             print(f"[INFO] Video local: procesando desde {start_time_sec}s hasta {end_time_sec}s")
         
         # Generar ruta de salida
-        output_video = generar_output_video(input_video, camera_sn=camera_sn)
+        # Ejemplo sn DS-2SE3C204MWG-E/1220240711AAWRFH2517200 -> DS-2SE3C204MWG-E_1220240711AAWRFH2517200
+        camera_sn_clean = camera_sn.replace('/', '_').replace('\\', '_'){}
+        output_video = generar_output_video(input_video, camera_sn=camera_sn_clean)
         
         print(f"Procesando video: {input_video}")
         print(f"Guardar video: {'Sí' if save_video else 'No'}")
