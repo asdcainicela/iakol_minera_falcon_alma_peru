@@ -63,13 +63,15 @@ cd ..
 
 desde la carpeta creada por git 
 ```bash
+
 docker run --runtime nvidia --privileged -d --ipc=host \
   --device /dev/bus/usb:/dev/bus/usb \
   --device /dev/video0:/dev/video0 \
   --device /dev/video1:/dev/video1 \
   --network=host \
   -v $(pwd):/app/alma \
-  --name cnm_container \
+  --name alma_container \
   --restart unless-stopped l4tml_alma \
   /bin/bash -c 'jupyter lab --ip 0.0.0.0 --port 8888 --allow-root --no-browser --ServerApp.token "alma" --ServerApp.password="" &> /var/log/jupyter.log & tail -f /var/log/jupyter.log'
+  
 ```

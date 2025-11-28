@@ -50,6 +50,9 @@ COPY requirements_container.txt .
 # Instalar requerimientos del proyecto FORZANDO PyPI oficial
 RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple --default-timeout=1000 -r requirements_container.txt
 
+# Instalar ultralytics SIN opencv (ya viene en la imagen base)
+RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple ultralytics==8.3.63 --no-deps
+
 # Fix TensorRT para numpy >= 1.24 (JetPack 6) - solo si existe
 RUN if [ -f /usr/lib/python3.10/dist-packages/tensorrt/__init__.py ]; then \
         sed -i "s|bool: np.bool,|bool: np.bool_,|g" /usr/lib/python3.10/dist-packages/tensorrt/__init__.py; \
