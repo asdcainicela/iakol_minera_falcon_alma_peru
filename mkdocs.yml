@@ -12,7 +12,7 @@ cameras:
     start_video: 0
     end_video: 60
     # Para streams RTSP (solo si use_rtsp=true y save_video=true)
-    time_save_rtsp: 20  # segundos de grabación
+    time_save_rtsp: 60  # segundos de grabación
     polygons:
       - [1,[[70,695],[204,1066],[561,1069],[1493,501],[1918,672],[1918,323],[1249,62],[12,300]]]
     input_homography: [[1889,454], [1122,256], [120,1070], [1441,631], [1893,780]]

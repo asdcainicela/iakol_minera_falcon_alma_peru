@@ -79,6 +79,6 @@ def prepare_and_send_alert(
 
     print("Metadata sin imagen:", debug_metadata)
     #---------------------
-    #send_metadata(metadata, api_url)
+    send_metadata(metadata, api_url)
 
   
