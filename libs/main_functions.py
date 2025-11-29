@@ -4,33 +4,34 @@ import torch
 import cv2
 from monitor.ruma_monitor import RumaMonitor
 from utils.stream_monitor import StreamMonitor
+from utils.video_capture_thread import VideoCaptureThread
 
 def process_video(video_path, output_path, start_time_sec, end_time_sec,
                   model_det_path, model_seg_path, detection_zone, camera_number, 
                   camera_sn, api_url, transformer, use_rtsp=True, save_video=False):
     """
-    Procesa un video completo usando el monitor de rumas - OPTIMIZADO PARA 30+ FPS.
+    Procesa un video usando THREAD DEDICADO para captura continua.
     
-    Sistema de contadores:
-    - frames_received: Frames que llegan del stream (sin filtro)
-    - frames_limited: Frames después del limitador de 6 FPS
-    - frames_processed: Frames procesados completamente
-    - frames_written: Frames escritos al video de salida
+    ARQUITECTURA:
+    - Thread 1 (capture): Lee frames del stream a 30+ FPS continuamente
+    - Thread 2 (main): Procesa frames a 6 FPS con YOLO
+    
+    Esto evita pérdida de frames durante procesamiento pesado.
 
     Args:
         video_path (str): Ruta del video de entrada o URL RTSP.
         output_path (str): Ruta del video de salida.
         start_time_sec (float): Tiempo de inicio en segundos.
-        end_time_sec (float): Tiempo de fin en segundos (para RTSP = duración de grabación en tiempo real).
+        end_time_sec (float): Tiempo de fin en segundos.
         model_det_path (str): Ruta del modelo de detección.
         model_seg_path (str): Ruta del modelo de segmentación.
-        detection_zone (dict[int, np.ndarray] | np.ndarray): Zonas de detección o una sola zona.
+        detection_zone (dict[int, np.ndarray] | np.ndarray): Zonas de detección.
         camera_number (int): Número de la cámara.
         camera_sn (str): Número de serie de la cámara.
         api_url (str): URL de la API para enviar alertas.
         transformer: Transformador de homografía.
         use_rtsp (bool): True si es stream RTSP, False si es archivo local.
-        save_video (bool): Si True, guarda el video procesado. Si False, solo procesa sin guardar.
+        save_video (bool): Si True, guarda el video procesado.
     """
 
     # Si detection_zone es un dict, seleccionamos la zona correspondiente
@@ -39,285 +40,241 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
             raise ValueError(f"No hay zona definida para la cámara {camera_number}")
         detection_zone = detection_zone[camera_number]
 
-    # Inicializar monitor de estadísticas del stream
+    # Inicializar monitor de estadísticas
     stream_monitor = StreamMonitor(
-        report_interval=5.0,  # Reportar cada 5 segundos
+        report_interval=5.0,
         enable_console=True
     )
 
-    # Inicializar monitor con el flag de save_video
+    # Inicializar monitor de rumas
     monitor = RumaMonitor(model_det_path, model_seg_path, detection_zone, 
                          camera_sn, api_url, transformer, save_video=save_video)
 
     # ============================================================================
-    # CONFIGURACIÓN OPTIMIZADA PARA 30+ FPS
+    # INICIALIZAR CAPTURA CON THREAD DEDICADO
     # ============================================================================
     
-    if use_rtsp:
-        print("[INFO] Detectado stream RTSP, aplicando configuración OPTIMIZADA para 30+ FPS...")
-        
-        # ✅ CLAVE 1: Configuración OpenCV para baja latencia
-        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
-            "rtsp_transport;tcp|"
-            "stimeout;5000000|"
-            "buffer_size;4096000|"      # 🔥 Buffer GRANDE (4MB)
-            "max_delay;500000|"          # Máximo 0.5s de delay
-            "reorder_queue_size;0|"      # Sin reordenamiento
-            "fflags;nobuffer+fastseek|"  # Sin buffering + seek rápido
-            "flags;low_delay|"
-            "probesize;32768|"           # Probe pequeño
-            "analyzeduration;0"          # Sin análisis previo
-        )
-        
-        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
-        
-        # ✅ CLAVE 2: Buffer interno de OpenCV GRANDE
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 50)  # 🔥 50 frames de buffer
-        
-    else:
-        print("[INFO] Detectado video local...")
-        cap = cv2.VideoCapture(video_path)
+    print("\n" + "="*80)
+    print("🚀 INICIALIZANDO SISTEMA DE CAPTURA CON THREAD DEDICADO")
+    print("="*80)
+    print(f"📹 Fuente: {video_path}")
+    print(f"🧵 Thread de captura: buffer de 100 frames")
+    print(f"⚙️  Thread de procesamiento: máximo 6 FPS")
+    print("="*80 + "\n")
     
-    if not cap.isOpened():
-        raise IOError(f"No se pudo abrir el video: {video_path}")
+    # Crear thread de captura
+    capture = VideoCaptureThread(
+        video_source=video_path,
+        buffer_size=100,  # Buffer grande para manejar picos
+        use_rtsp=use_rtsp
+    )
+    
+    # Iniciar captura
+    capture.start()
+    
+    # Esperar a que se llene el buffer inicial
+    print("[INFO] Esperando buffer inicial...")
+    time.sleep(2)
+    
+    # Obtener info del video
+    video_info = capture.get_video_info()
+    width = video_info['width']
+    height = video_info['height']
+    fps = video_info['fps']
+    
+    print(f"[INFO] Video: {width}x{height} @ {fps:.2f} FPS")
 
-    # Obtener propiedades del video
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    
-    print(f"Video: {width}x{height} @ {fps:.2f} FPS")
-
-    # Para RTSP o FPS inválido, usar valor por defecto
-    if fps <= 0 or use_rtsp:
-        fps = 25.0  # FPS por defecto para streams y video de salida
-        print(f"[INFO] Usando FPS estándar para video de salida: {fps}")
-    
-    # Configurar video de salida solo si save_video es True
+    # Configurar video de salida
     out = None
     if save_video:
         output_fps = 25.0
-        out = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*'mp4v'), output_fps, (width, height))
-        print(f"[INFO] Video de salida configurado: {output_path}")
-        print(f"[INFO] FPS del video de salida: {output_fps}")
+        out = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*'mp4v'), 
+                             output_fps, (width, height))
+        print(f"[INFO] Video de salida: {output_path} @ {output_fps} FPS")
     else:
         print("[INFO] Modo sin grabación - solo procesamiento")
 
-    # Calcular frames según use_rtsp
+    # Calcular límites de frames
     if use_rtsp:
         start_frame = 0
         if save_video:
             end_frame = float('inf')
-            print(f"[INFO] Stream RTSP: grabando durante {end_time_sec} segundos de tiempo REAL")
-            print(f"[INFO] Se capturarán todos los frames que lleguen en ese tiempo")
+            print(f"[INFO] Stream RTSP: grabando {end_time_sec}s de tiempo real")
         else:
             end_frame = float('inf')
-            print("[INFO] Stream RTSP sin grabación: procesamiento continuo (Ctrl+C para detener)")
+            print("[INFO] Stream RTSP: procesamiento continuo (Ctrl+C para detener)")
     else:
         start_frame = int(start_time_sec * fps)
         end_frame = int(end_time_sec * fps)
-        print(f"Procesando frames {start_frame} a {end_frame}")
+        print(f"[INFO] Video local: frames {start_frame} a {end_frame}")
 
     # ============================================================================
     # CONTADORES DETALLADOS
     # ============================================================================
-    frames_received = 0          # Frames recibidos del stream (sin filtro)
-    frames_limited = 0           # Frames después del limitador de 6 FPS
-    frames_processed = 0         # Frames procesados completamente (con YOLO)
-    frames_written = 0           # Frames escritos al video
-    frames_errors = 0            # Frames con error de lectura
+    frames_received = 0      # Frames leídos del thread de captura
+    frames_limited = 0       # Frames después del limitador de 6 FPS
+    frames_processed = 0     # Frames procesados con YOLO
+    frames_written = 0       # Frames escritos al video
+    frames_read_errors = 0   # Errores al leer del buffer
     
-    consecutive_errors = 0
-    max_consecutive_errors = 30
-    
-    # ✅ Límite de FPS de PROCESAMIENTO ajustable
-    max_processing_fps = 6.0  # Procesar 6 FPS (puedes ajustar)
+    # Límite de FPS de PROCESAMIENTO
+    max_processing_fps = 6.0
     min_frame_interval = 1.0 / max_processing_fps
     last_process_time = 0.0
     
-    # Control de tiempo real para RTSP con grabación
+    # Control de tiempo real para RTSP
     recording_start_time = None
     max_recording_time = None
     
     if use_rtsp and save_video:
         recording_start_time = time.time()
         max_recording_time = end_time_sec
-        print(f"[INFO] Iniciando grabación por {end_time_sec} segundos...")
+        print(f"[INFO] Tiempo de grabación: {end_time_sec}s")
     
-    # Para calcular FPS general
+    # Para calcular FPS
     fps_calc_start_time = time.time()
-    fps_calc_interval = 1.0  # Calcular FPS cada segundo
-    last_fps_calc_time = fps_calc_start_time
-    
-    # Contadores para FPS instantáneo
-    fps_received_last_second = 0
-    fps_processed_last_second = 0
     
     print(f"\n{'='*80}")
-    print("🚀 INICIANDO PROCESAMIENTO DE VIDEO")
+    print("🎬 INICIANDO PROCESAMIENTO")
     print(f"{'='*80}")
-    print(f"📥 Modo de lectura: CONTINUA (30+ FPS esperado)")
-    print(f"⚙️  Procesamiento pesado: máximo {max_processing_fps} FPS")
-    print(f"🎯 Estrategia: Leer TODOS los frames, procesar 1 de cada {int(30/max_processing_fps)}")
+    print(f"📥 Thread captura: leyendo a máxima velocidad (~30 FPS)")
+    print(f"⚡ Thread proceso: procesando a 6 FPS máximo")
     print(f"{'='*80}\n")
     
-    with torch.no_grad():
-        while cap.isOpened():
-            # Verificar timeout de grabación para RTSP
-            if recording_start_time and max_recording_time:
-                elapsed_real_time = time.time() - recording_start_time
-                if elapsed_real_time >= max_recording_time:
-                    print(f"\n[INFO] ✅ Alcanzado tiempo límite de grabación: {max_recording_time}s")
-                    print(f"[INFO] Tiempo real transcurrido: {elapsed_real_time:.1f}s")
-                    print(f"[INFO] Frames recibidos: {frames_received}")
-                    break
-            
-            # ============================================================================
-            # LECTURA DE FRAME (SIN FILTRO)
-            # ============================================================================
-            read_start = time.time()
-            ret, frame = cap.read()
-            read_time = time.time() - read_start
-            
-            # Manejo de errores de lectura
-            if not ret:
-                frames_errors += 1
-                consecutive_errors += 1
-                
-                # No imprimir warning en cada error (muy verboso)
-                if consecutive_errors == 1 or consecutive_errors % 10 == 0:
-                    print(f"[WARN] Error leyendo frame (errores consecutivos: {consecutive_errors})")
-                
-                if consecutive_errors >= max_consecutive_errors:
-                    print("[ERROR] Demasiados errores consecutivos. Finalizando...")
-                    break
-                    
-                # Para RTSP, intentar reconectar
-                if use_rtsp:
-                    print("[INFO] Intentando reconectar al stream RTSP...")
-                    cap.release()
-                    time.sleep(2)
-                    cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 50)  # Restaurar buffer
-                    if not cap.isOpened():
-                        print("[ERROR] No se pudo reconectar")
+    try:
+        with torch.no_grad():
+            while True:
+                # Verificar timeout de grabación
+                if recording_start_time and max_recording_time:
+                    elapsed_real_time = time.time() - recording_start_time
+                    if elapsed_real_time >= max_recording_time:
+                        print(f"\n[INFO] ✅ Tiempo límite alcanzado: {max_recording_time}s")
+                        print(f"[INFO] Tiempo transcurrido: {elapsed_real_time:.1f}s")
+                        print(f"[INFO] Frames recibidos: {frames_received}")
                         break
-                continue
-            
-            # ✅ Frame recibido correctamente
-            frames_received += 1
-            fps_received_last_second += 1
-            consecutive_errors = 0
-            
-            # Registrar en stream_monitor
-            stream_monitor.frame_read()
-            
-            # Verificar límite (solo para MP4)
-            if frames_received >= end_frame:
-                print(f"[INFO] Alcanzado frame límite: {end_frame}")
-                break
-
-            # ============================================================================
-            # DECIDIR SI PROCESAR ESTE FRAME (LIMITADOR DE 6 FPS)
-            # ============================================================================
-            current_time = time.time()
-            time_since_last_process = current_time - last_process_time
-            
-            should_process = time_since_last_process >= min_frame_interval
-            
-            if should_process:
-                # ✅ Frame pasa el limitador
-                frames_limited += 1
                 
-                # Procesar solo si está en el rango
-                if frames_received >= start_frame:
-                    # 🔥 PROCESAMIENTO COMPLETO (pesado)
-                    process_start = time.time()
-                    processed_frame = monitor.process_frame(frame, frames_received, fps)
-                    process_time = time.time() - process_start
+                # ============================================================================
+                # LEER FRAME DEL THREAD DE CAPTURA
+                # ============================================================================
+                ret, frame = capture.read(timeout=1.0)
+                
+                if not ret:
+                    frames_read_errors += 1
                     
-                    frames_processed += 1
-                    fps_processed_last_second += 1
+                    # Si hay muchos errores consecutivos, verificar thread
+                    if frames_read_errors > 50:
+                        if not capture.is_running:
+                            print("[ERROR] Thread de captura se detuvo")
+                            break
                     
-                    stream_monitor.frame_processed(process_time)
-                    last_process_time = current_time
+                    continue
+                
+                # ✅ Frame recibido del thread
+                frames_received += 1
+                stream_monitor.frame_read()
+                
+                # Verificar límite (solo para MP4)
+                if frames_received >= end_frame:
+                    print(f"[INFO] Frame límite alcanzado: {end_frame}")
+                    break
+
+                # ============================================================================
+                # LIMITADOR DE PROCESAMIENTO (6 FPS)
+                # ============================================================================
+                current_time = time.time()
+                time_since_last_process = current_time - last_process_time
+                
+                should_process = time_since_last_process >= min_frame_interval
+                
+                if should_process:
+                    # ✅ Frame pasa el limitador
+                    frames_limited += 1
                     
-                    # Escribir frame procesado
-                    if save_video and out is not None:
-                        out.write(processed_frame)
-                        frames_written += 1
-                    
-                    # ============================================================================
-                    # LOG DETALLADO CADA 50 FRAMES PROCESADOS
-                    # ============================================================================
-                    if frames_processed % 50 == 0:
-                        # Calcular métricas
-                        elapsed_total = time.time() - fps_calc_start_time
-                        fps_general = frames_received / elapsed_total if elapsed_total > 0 else 0
+                    if frames_received >= start_frame:
+                        # 🔥 PROCESAMIENTO COMPLETO (YOLO + tracking)
+                        process_start = time.time()
+                        processed_frame = monitor.process_frame(frame, frames_received, fps)
+                        process_time = time.time() - process_start
                         
-                        drop_limitador = frames_received - frames_limited
-                        drop_limitador_pct = (drop_limitador / frames_received * 100) if frames_received > 0 else 0
+                        frames_processed += 1
+                        stream_monitor.frame_processed(process_time)
+                        last_process_time = current_time
                         
-                        drop_general = frames_received - frames_processed
-                        drop_general_pct = (drop_general / frames_received * 100) if frames_received > 0 else 0
+                        # Escribir frame procesado
+                        if save_video and out is not None:
+                            out.write(processed_frame)
+                            frames_written += 1
                         
-                        active_rumas = sum(1 for r in monitor.tracker.rumas.values() if r.is_active)
-                        active_objects = len(monitor.object_tracker.tracked_objects)
-                        
-                        # LOG COMPLETO
-                        if recording_start_time:
-                            elapsed = time.time() - recording_start_time
-                            print(
-                                f"[Frame {frames_received:>6}] "
-                                f"⏱️ {elapsed:>5.1f}s/{max_recording_time}s | "
-                                f"📥 Recibido:{frames_received:>6} | "
-                                f"⚙️ Limitado:{frames_limited:>6} | "
-                                f"✅ Procesado:{frames_processed:>5} | "
-                                f"⏭️ Drop Limit:{drop_limitador:>5} ({drop_limitador_pct:>4.1f}%) | "
-                                f"⏭️ Drop Gen:{drop_general:>5} ({drop_general_pct:>4.1f}%) | "
-                                f"📊 FPS:{fps_general:>5.1f} | "
-                                f"🎯 R:{active_rumas} O:{active_objects}"
-                            )
-                        else:
-                            print(
-                                f"[Frame {frames_received:>6}] "
-                                f"📥 Recibido:{frames_received:>6} | "
-                                f"⚙️ Limitado:{frames_limited:>6} | "
-                                f"✅ Procesado:{frames_processed:>5} | "
-                                f"⏭️ Drop Limit:{drop_limitador:>5} ({drop_limitador_pct:>4.1f}%) | "
-                                f"⏭️ Drop Gen:{drop_general:>5} ({drop_general_pct:>4.1f}%) | "
-                                f"📊 FPS:{fps_general:>5.1f} | "
-                                f"⏱️ ProcTime:{process_time*1000:>5.1f}ms | "
-                                f"🎯 R:{active_rumas} O:{active_objects}"
-                            )
+                        # ============================================================================
+                        # LOG DETALLADO CADA 50 FRAMES PROCESADOS
+                        # ============================================================================
+                        if frames_processed % 50 == 0:
+                            # Obtener estadísticas del thread de captura
+                            capture_stats = capture.get_stats()
+                            
+                            # Calcular métricas
+                            elapsed_total = time.time() - fps_calc_start_time
+                            fps_general = frames_received / elapsed_total if elapsed_total > 0 else 0
+                            
+                            drop_limitador = frames_received - frames_limited
+                            drop_limitador_pct = (drop_limitador / frames_received * 100) if frames_received > 0 else 0
+                            
+                            drop_general = frames_received - frames_processed
+                            drop_general_pct = (drop_general / frames_received * 100) if frames_received > 0 else 0
+                            
+                            active_rumas = sum(1 for r in monitor.tracker.rumas.values() if r.is_active)
+                            active_objects = len(monitor.object_tracker.tracked_objects)
+                            
+                            # LOG COMPLETO
+                            if recording_start_time:
+                                elapsed = time.time() - recording_start_time
+                                print(
+                                    f"[Frame {frames_received:>6}] "
+                                    f"⏱️ {elapsed:>5.1f}s/{max_recording_time}s | "
+                                    f"📥 Recibido:{frames_received:>6} | "
+                                    f"⚙️ Limitado:{frames_limited:>6} | "
+                                    f"✅ Procesado:{frames_processed:>5} | "
+                                    f"⏭️ Drop:{drop_general:>5} ({drop_general_pct:>4.1f}%) | "
+                                    f"📊 FPS:{fps_general:>5.1f} | "
+                                    f"🧵 Captura:{capture_stats['capture_fps']:>5.1f} | "
+                                    f"📦 Buf:{capture_stats['buffer_size']:>3}/{capture_stats['buffer_max']} | "
+                                    f"🎯 R:{active_rumas} O:{active_objects}"
+                                )
+                            else:
+                                print(
+                                    f"[Frame {frames_received:>6}] "
+                                    f"📥 Recibido:{frames_received:>6} | "
+                                    f"✅ Procesado:{frames_processed:>5} | "
+                                    f"⏭️ Drop:{drop_general:>5} ({drop_general_pct:>4.1f}%) | "
+                                    f"📊 FPS:{fps_general:>5.1f} | "
+                                    f"🧵 Captura:{capture_stats['capture_fps']:>5.1f} | "
+                                    f"📦 Buf:{capture_stats['buffer_size']:>3}/{capture_stats['buffer_max']} | "
+                                    f"⏱️ ProcTime:{process_time*1000:>5.1f}ms | "
+                                    f"🎯 R:{active_rumas} O:{active_objects}"
+                                )
+                    else:
+                        stream_monitor.frame_skipped()
                 else:
-                    # Frame fuera del rango de procesamiento
+                    # ❌ Frame rechazado por limitador
                     stream_monitor.frame_skipped()
-            else:
-                # ❌ Frame rechazado por limitador de 6 FPS
-                stream_monitor.frame_skipped()
-                
-                # Escribir frame original sin procesar (si save_video está activo)
-                if save_video and out is not None and frames_received >= start_frame:
-                    out.write(frame)
-                    frames_written += 1
-            
-            # ============================================================================
-            # CALCULAR FPS INSTANTÁNEO CADA SEGUNDO
-            # ============================================================================
-            if current_time - last_fps_calc_time >= fps_calc_interval:
-                time_diff = current_time - last_fps_calc_time
-                fps_received_instant = fps_received_last_second / time_diff
-                fps_processed_instant = fps_processed_last_second / time_diff
-                
-                # Resetear contadores
-                fps_received_last_second = 0
-                fps_processed_last_second = 0
-                last_fps_calc_time = current_time
-
-    cap.release()
-    if out is not None:
-        out.release()
+                    
+                    # Escribir frame sin procesar
+                    if save_video and out is not None and frames_received >= start_frame:
+                        out.write(frame)
+                        frames_written += 1
+    
+    except KeyboardInterrupt:
+        print("\n[INFO] Interrupción por usuario (Ctrl+C)")
+    
+    finally:
+        # ============================================================================
+        # LIMPIEZA Y CIERRE
+        # ============================================================================
+        print("\n[INFO] Deteniendo captura...")
+        capture.stop()
+        
+        if out is not None:
+            out.release()
 
     # ============================================================================
     # REPORTE FINAL DETALLADO
@@ -333,7 +290,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
         if recording_start_time:
             total_time = time.time() - recording_start_time
             print(f"⏱️  Tiempo de grabación: {total_time:.1f} segundos")
-            print(f"📊 Frames recibidos del stream: {frames_received}")
+            print(f"📊 Frames recibidos del thread: {frames_received}")
             print(f"💾 Frames escritos al video: {frames_written}")
             video_duration = frames_written / 25.0
             print(f"🎬 Duración del video: ~{video_duration:.1f} segundos")
@@ -343,11 +300,11 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     print(f"\n{'='*80}")
     print("📊 ESTADÍSTICAS DETALLADAS DE FRAMES")
     print(f"{'='*80}")
-    print(f"📥 Frames recibidos (sin filtro):     {frames_received:>8}")
+    print(f"📥 Frames recibidos del thread:       {frames_received:>8}")
     print(f"⚙️  Frames después de limitador 6fps: {frames_limited:>8}")
     print(f"✅ Frames procesados (con YOLO):      {frames_processed:>8}")
     print(f"💾 Frames escritos al video:          {frames_written:>8}")
-    print(f"❌ Frames con error de lectura:       {frames_errors:>8}")
+    print(f"❌ Errores al leer del buffer:        {frames_read_errors:>8}")
     print()
     
     # Calcular drops
@@ -373,7 +330,11 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     print(f"⚡ FPS PROCESAMIENTO (con YOLO):       {fps_procesamiento:>8.2f} fps")
     print(f"⏱️  TIEMPO TOTAL:                       {elapsed_total:>8.1f} segundos")
     
+    # Estadísticas del thread de captura
     print(f"\n{'='*80}")
+    capture.print_stats()
+    
+    print(f"{'='*80}")
     print("🎯 ESTADÍSTICAS DE DETECCIÓN")
     print(f"{'='*80}")
     print(f"🎯 Total de rumas detectadas:          {len(monitor.tracker.rumas)}")
@@ -383,20 +344,24 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     # Imprimir estadísticas finales del stream monitor
     stream_monitor.print_final_report()
     
-    # Retornar estadísticas extendidas
+    # Retornar estadísticas completas
+    capture_stats = capture.get_stats()
+    
     return {
         **stream_monitor.get_stats_dict(),
         'frames_received': frames_received,
         'frames_limited': frames_limited,
         'frames_processed': frames_processed,
         'frames_written': frames_written,
-        'frames_errors': frames_errors,
+        'frames_read_errors': frames_read_errors,
         'drop_limitador': drop_limitador,
         'drop_limitador_pct': drop_limitador_pct,
         'drop_general': drop_general,
         'drop_general_pct': drop_general_pct,
         'fps_general': fps_general,
         'fps_procesamiento': fps_procesamiento,
+        'capture_fps': capture_stats['capture_fps'],
+        'capture_dropped': capture_stats['frames_dropped'],
         'total_rumas': len(monitor.tracker.rumas),
         'total_objects': len(monitor.object_tracker.tracked_objects)
     }
