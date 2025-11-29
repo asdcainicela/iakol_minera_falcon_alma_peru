@@ -86,13 +86,24 @@ class StreamStats:
     
     def get_report(self) -> str:
         """Genera reporte de estadísticas del stream"""
-        return (
+        efficiency = (self.processing_fps/self.stream_fps*100) if self.stream_fps > 0 else 0
+        
+        # Determinar si hay limitador activo
+        limiter_active = self.processing_fps < self.stream_fps and self.skip_rate > 10
+        
+        report = (
             f"\n{'='*70}\n"
             f"📊 ESTADÍSTICAS DEL STREAM\n"
             f"{'='*70}\n"
             f"  📹 FPS del Stream:      {self.stream_fps:>7.2f} fps  (FPS real de la cámara)\n"
             f"  ⚡ FPS Procesamiento:   {self.processing_fps:>7.2f} fps  (FPS de tu sistema)\n"
-            f"  📊 Eficiencia:          {(self.processing_fps/self.stream_fps*100) if self.stream_fps > 0 else 0:>6.1f}%   (% de frames procesados)\n"
+        )
+        
+        if limiter_active:
+            report += f"  🎯 Limitador activo:    Procesando máximo {self.processing_fps:.1f} FPS\n"
+        
+        report += (
+            f"  📊 Frames Procesados:   {efficiency:>6.1f}%   (% del stream)\n"
             f"\n"
             f"  📥 Frames Leídos:       {self.frames_read:>8}  (del buffer)\n"
             f"  ✅ Frames Procesados:   {self.frames_processed:>8}  (completamente)\n"
@@ -102,6 +113,8 @@ class StreamStats:
             f"  ⏱️  Tiempo Transcurrido: {self.elapsed_time:>6.1f} s\n"
             f"{'='*70}\n"
         )
+        
+        return report
 
 
 class StreamMonitor:

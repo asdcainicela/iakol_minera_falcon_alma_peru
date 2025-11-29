@@ -95,8 +95,15 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     consecutive_errors = 0
     max_consecutive_errors = 30  # Reintentar hasta 30 errores consecutivos
     
+    # Control de FPS: Máximo 6 frames por segundo
+    max_processing_fps = 6.0
+    min_frame_interval = 1.0 / max_processing_fps  # 0.166 segundos entre frames
+    last_process_time = 0.0
+    
     print(f"\n{'='*60}")
     print("🚀 INICIANDO PROCESAMIENTO DE VIDEO")
+    print(f"{'='*60}")
+    print(f"⚙️  Limitador FPS activo: máximo {max_processing_fps} FPS")
     print(f"{'='*60}\n")
     
     with torch.no_grad():
@@ -141,34 +148,52 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
 
             # Procesar frame solo si está en el rango
             if frame_count >= start_frame:
-                # Medir tiempo total de procesamiento
-                process_start = time.time()
+                # Verificar si debe procesar este frame (limitador de FPS)
+                current_time = time.time()
+                time_since_last_process = current_time - last_process_time
                 
-                processed_frame = monitor.process_frame(frame, frame_count, fps)
+                should_process = time_since_last_process >= min_frame_interval
                 
-                process_time = time.time() - process_start
-                
-                # Registrar frame procesado con su tiempo
-                stream_monitor.frame_processed(process_time)
-                
-                # Solo escribir si save_video está activo
-                if save_video and out is not None:
-                    out.write(processed_frame)
+                if should_process:
+                    # Medir tiempo total de procesamiento
+                    process_start = time.time()
+                    
+                    processed_frame = monitor.process_frame(frame, frame_count, fps)
+                    
+                    process_time = time.time() - process_start
+                    
+                    # Registrar frame procesado con su tiempo
+                    stream_monitor.frame_processed(process_time)
+                    last_process_time = current_time
+                    
+                    # Solo escribir si save_video está activo
+                    if save_video and out is not None:
+                        out.write(processed_frame)
 
-                # Log cada 50 frames (más detallado)
-                if frame_count % 50 == 0:
-                    active_rumas = sum(1 for r in monitor.tracker.rumas.values() if r.is_active)
-                    active_objects = len(monitor.object_tracker.tracked_objects)
-                    stream_fps = stream_monitor.stats.stream_fps
-                    proc_fps = stream_monitor.stats.processing_fps
-                    print(
-                        f"[Frame {frame_count:>6}] "
-                        f"Stream: {stream_fps:>5.1f} fps | "
-                        f"Proceso: {proc_fps:>5.1f} fps | "
-                        f"Tiempo: {process_time*1000:>5.1f}ms | "
-                        f"Rumas: {active_rumas} | "
-                        f"Objetos: {active_objects}"
-                    )
+                    # Log cada 50 frames procesados
+                    if stream_monitor.stats.frames_processed % 50 == 0:
+                        active_rumas = sum(1 for r in monitor.tracker.rumas.values() if r.is_active)
+                        active_objects = len(monitor.object_tracker.tracked_objects)
+                        stream_fps = stream_monitor.stats.stream_fps
+                        proc_fps = stream_monitor.stats.processing_fps
+                        skip_rate = stream_monitor.stats.skip_rate
+                        print(
+                            f"[Procesado {stream_monitor.stats.frames_processed:>6}] "
+                            f"Stream: {stream_fps:>5.1f} fps | "
+                            f"Proceso: {proc_fps:>5.1f} fps | "
+                            f"Saltados: {skip_rate:>5.1f}% | "
+                            f"Tiempo: {process_time*1000:>5.1f}ms | "
+                            f"Rumas: {active_rumas} | "
+                            f"Objetos: {active_objects}"
+                        )
+                else:
+                    # Frame recibido pero no procesado (limitador de FPS)
+                    stream_monitor.frame_skipped()
+                    processed_frame = frame  # Mantener frame original sin procesar
+                    
+                    # Solo escribir si save_video está activo
+                    if save_video and out is not None:
+                        out.write(processed_frame)
             else:
                 # Frame fuera del rango de procesamiento
                 stream_monitor.frame_skipped()
