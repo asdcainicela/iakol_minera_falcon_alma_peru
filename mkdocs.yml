@@ -1,8 +1,8 @@
 processing:
-  segmentation_interval_idle: 200    # Aumentado (antes 100)
-  segmentation_interval_active: 30   # Aumentado (antes 10)
+  segmentation_interval_idle: 100    # Después del scan: cada 100 frames sin actividad
+  segmentation_interval_active: 15   # Cada 15 frames con actividad (era 30, muy lento)
   activity_cooldown_frames: 200
-  detection_skip_idle: 5             # Aumentado (antes 3)
+  detection_skip_idle: 3             # Opcional para SLEEP mode
 
 # Configuración de cámaras
 cameras:
