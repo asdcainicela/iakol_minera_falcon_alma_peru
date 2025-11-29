@@ -388,11 +388,22 @@ class RumaMonitor:
                     frame_shape=frame.shape,
                     detection_zone=self.detection_zone
                 )
-        
+
         # 4. Detectar nuevas rumas
         if self.tracker.new_ruma_created:
             ruma_id, frame_shape = self.tracker.new_ruma_created
             ruma = self.tracker.rumas[ruma_id]
+
+
+            if not hasattr(self, '_new_ruma_queue'):
+                self._new_ruma_queue = []
+            
+            self._new_ruma_queue.append((ruma_id, frame_shape))
+            
+            # Procesar SOLO una ruma nueva por frame
+            if len(self._new_ruma_queue) > 0:
+                ruma_id, frame_shape = self._new_ruma_queue.pop(0)
+                ruma = self.tracker.rumas[ruma_id]
             ruma_data = RumaInfo(
                 id=ruma.id,
                 percent=100.0,

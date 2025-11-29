@@ -21,7 +21,7 @@ class RumaTracker:
         """Calcula distancia euclidiana entre dos puntos"""
         return np.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
 
-    def find_closest_ruma(self, centroid, max_distance=50):
+    def find_closest_ruma(self, centroid, max_distance=80): #antes 50
         min_distance = float('inf')
         closest_ruma = None
         for ruma_id, ruma in self.rumas.items():
@@ -124,7 +124,7 @@ class RumaTracker:
             int(np.mean([p[0] for p in mask])),
             int(np.mean([p[1] for p in mask]))
         )
-        if ruma.percentage <= 10:
+        if ruma.percentage <= 5:
             ruma.is_active = False
             print(f"❌ Ruma {ruma_id} eliminada (porcentaje: {ruma.percentage:.1f}%)")
 
