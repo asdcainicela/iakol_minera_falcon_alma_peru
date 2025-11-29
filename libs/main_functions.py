@@ -15,7 +15,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
         video_path (str): Ruta del video de entrada o URL RTSP.
         output_path (str): Ruta del video de salida.
         start_time_sec (float): Tiempo de inicio en segundos.
-        end_time_sec (float): Tiempo de fin en segundos (puede ser float('inf') para RTSP continuo).
+        end_time_sec (float): Tiempo de fin en segundos (para RTSP = duración de grabación en tiempo real).
         model_det_path (str): Ruta del modelo de detección.
         model_seg_path (str): Ruta del modelo de segmentación.
         detection_zone (dict[int, np.ndarray] | np.ndarray): Zonas de detección o una sola zona.
@@ -46,8 +46,18 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     # Configurar opciones de captura según use_rtsp
     if use_rtsp:
         print("[INFO] Detectado stream RTSP, configurando opciones de captura...")
-        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
+        # Opciones optimizadas para reducir latencia
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
+            "rtsp_transport;tcp|"
+            "stimeout;5000000|"
+            "max_delay;0|"           # Sin buffer de delay
+            "fflags;nobuffer|"       # Sin buffering
+            "flags;low_delay"        # Baja latencia
+        )
         cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
+        
+        # Configurar buffer mínimo
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     else:
         print("[INFO] Detectado video local...")
         cap = cv2.VideoCapture(video_path)
@@ -61,16 +71,20 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     
     print(f"Video: {width}x{height} @ {fps:.2f} FPS")
 
-    # Para RTSP, el FPS puede ser 0 o incorrecto, usar valor por defecto
+    # Para RTSP o FPS inválido, usar valor por defecto
     if fps <= 0 or use_rtsp:
-        fps = 25.0  # FPS por defecto para streams
-        print(f"[INFO] Usando FPS por defecto: {fps}")
-
+        fps = 25.0  # FPS por defecto para streams y video de salida
+        print(f"[INFO] Usando FPS estándar para video de salida: {fps}")
+    
     # Configurar video de salida solo si save_video es True
     out = None
     if save_video:
-        out = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+        # IMPORTANTE: El video de salida SIEMPRE usa 25 FPS para reproducción fluida
+        # Independientemente del FPS del stream de entrada
+        output_fps = 25.0
+        out = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*'mp4v'), output_fps, (width, height))
         print(f"[INFO] Video de salida configurado: {output_path}")
+        print(f"[INFO] FPS del video de salida: {output_fps}")
     else:
         print("[INFO] Modo sin grabación - solo procesamiento")
 
@@ -78,9 +92,10 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     if use_rtsp:
         start_frame = 0
         if save_video:
-            # Si se guarda video RTSP, usar end_time_sec como duración
-            end_frame = int(end_time_sec * fps)
-            print(f"[INFO] Stream RTSP con grabación: grabando aproximadamente {end_frame} frames")
+            # Para RTSP: usar tiempo real, NO contar frames
+            end_frame = float('inf')  # No limitar por frames
+            print(f"[INFO] Stream RTSP: grabando durante {end_time_sec} segundos de tiempo REAL")
+            print(f"[INFO] Se capturarán todos los frames que lleguen en ese tiempo")
         else:
             # Si NO se guarda video, procesar indefinidamente
             end_frame = float('inf')
@@ -100,6 +115,15 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     min_frame_interval = 1.0 / max_processing_fps  # 0.166 segundos entre frames
     last_process_time = 0.0
     
+    # Control de tiempo real para RTSP con grabación
+    recording_start_time = None
+    max_recording_time = None
+    
+    if use_rtsp and save_video:
+        recording_start_time = time.time()
+        max_recording_time = end_time_sec
+        print(f"[INFO] Iniciando grabación por {end_time_sec} segundos...")
+    
     print(f"\n{'='*60}")
     print("🚀 INICIANDO PROCESAMIENTO DE VIDEO")
     print(f"{'='*60}")
@@ -108,6 +132,15 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     
     with torch.no_grad():
         while cap.isOpened():
+            # Verificar timeout de grabación para RTSP
+            if recording_start_time and max_recording_time:
+                elapsed_real_time = time.time() - recording_start_time
+                if elapsed_real_time >= max_recording_time:
+                    print(f"\n[INFO] ✅ Alcanzado tiempo límite de grabación: {max_recording_time}s")
+                    print(f"[INFO] Tiempo real transcurrido: {elapsed_real_time:.1f}s")
+                    print(f"[INFO] Frames capturados: {frame_count}")
+                    break
+            
             # Medir tiempo de lectura
             read_start = time.time()
             ret, frame = cap.read()
@@ -141,7 +174,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
             # Resetear contador de errores si se lee correctamente
             consecutive_errors = 0
             
-            # Verificar si ya llegamos al límite
+            # Verificar si ya llegamos al límite (solo para MP4)
             if frame_count >= end_frame:
                 print(f"[INFO] Alcanzado frame límite: {end_frame}")
                 break
@@ -177,15 +210,28 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
                         stream_fps = stream_monitor.stats.stream_fps
                         proc_fps = stream_monitor.stats.processing_fps
                         skip_rate = stream_monitor.stats.skip_rate
-                        print(
-                            f"[Procesado {stream_monitor.stats.frames_processed:>6}] "
-                            f"Stream: {stream_fps:>5.1f} fps | "
-                            f"Proceso: {proc_fps:>5.1f} fps | "
-                            f"Saltados: {skip_rate:>5.1f}% | "
-                            f"Tiempo: {process_time*1000:>5.1f}ms | "
-                            f"Rumas: {active_rumas} | "
-                            f"Objetos: {active_objects}"
-                        )
+                        
+                        # Mostrar tiempo transcurrido para RTSP
+                        if recording_start_time:
+                            elapsed = time.time() - recording_start_time
+                            print(
+                                f"[Procesado {stream_monitor.stats.frames_processed:>6}] "
+                                f"⏱️ Tiempo: {elapsed:>5.1f}s/{max_recording_time}s | "
+                                f"Stream: {stream_fps:>5.1f} fps | "
+                                f"Proceso: {proc_fps:>5.1f} fps | "
+                                f"Rumas: {active_rumas} | "
+                                f"Objetos: {active_objects}"
+                            )
+                        else:
+                            print(
+                                f"[Procesado {stream_monitor.stats.frames_processed:>6}] "
+                                f"Stream: {stream_fps:>5.1f} fps | "
+                                f"Proceso: {proc_fps:>5.1f} fps | "
+                                f"Saltados: {skip_rate:>5.1f}% | "
+                                f"Tiempo: {process_time*1000:>5.1f}ms | "
+                                f"Rumas: {active_rumas} | "
+                                f"Objetos: {active_objects}"
+                            )
                 else:
                     # Frame recibido pero no procesado (limitador de FPS)
                     stream_monitor.frame_skipped()
@@ -211,6 +257,12 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     
     if save_video:
         print(f"📹 Video guardado en: {output_path}")
+        if recording_start_time:
+            total_time = time.time() - recording_start_time
+            print(f"⏱️  Tiempo de grabación: {total_time:.1f} segundos")
+            print(f"📊 Frames capturados: {frame_count}")
+            video_duration = frame_count / 25.0  # 25 FPS del video de salida
+            print(f"🎬 Duración del video: ~{video_duration:.1f} segundos")
     else:
         print(f"📊 Procesamiento sin grabación completado")
     
