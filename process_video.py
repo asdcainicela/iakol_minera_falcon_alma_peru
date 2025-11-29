@@ -65,8 +65,21 @@ def main():
         print(f"[Error] {e}")
         return
 
-    model_det_path = 'models/model_detection.pt'
-    model_seg_path = 'models/model_segmentation.pt'
+    # RUTAS DE MODELOS TENSORRT (.engine)
+    model_det_path = 'models/model_detection.engine'
+    model_seg_path = 'models/model_segmentation.engine'
+    
+    # Verificar que los modelos existen
+    if not os.path.exists(model_det_path):
+        print(f"[ERROR] No se encontró el modelo de detección: {model_det_path}")
+        print("[INFO] Asegúrate de tener el archivo .engine en la carpeta models/")
+        return
+        
+    if not os.path.exists(model_seg_path):
+        print(f"[ERROR] No se encontró el modelo de segmentación: {model_seg_path}")
+        print("[INFO] Asegúrate de tener el archivo .engine en la carpeta models/")
+        return
+    
     api_url = "https://api.ia-kol.com/api/Alert/create-alert-va"
 
     process_video(

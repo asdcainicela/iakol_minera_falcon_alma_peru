@@ -25,8 +25,8 @@ class RumaMonitor:
         Inicializa el monitor de rumas
 
         Args:
-            model_det_path: Ruta al modelo de detección
-            model_seg_path: Ruta al modelo de segmentación
+            model_det_path: Ruta al modelo de detección (.pt o .engine)
+            model_seg_path: Ruta al modelo de segmentación (.pt o .engine)
             detection_zone: Polígono que define la zona de detección
             camera_sn: Número de serie de la cámara
             api_url: URL de la API para alertas
@@ -34,17 +34,23 @@ class RumaMonitor:
             save_video: Si True, aplica dibujos visuales. Si False, solo procesa datos.
         """
         self.api_url = api_url 
-        self.model_det = YOLO(model_det_path)
-        self.model_seg = YOLO(model_seg_path)
+        
+        # Cargar modelos (YOLO detecta automáticamente el formato)
+        print(f"[INFO] Cargando modelo de detección: {model_det_path}")
+        self.model_det = YOLO(model_det_path, task='detect')
+        
+        print(f"[INFO] Cargando modelo de segmentación: {model_seg_path}")
+        self.model_seg = YOLO(model_seg_path, task='segment')
+        
         self.detection_zone = detection_zone
         self.camera_sn = camera_sn
         self.enterprise = 'alma'
-        self.save_video = save_video  # NUEVO: controla si se dibujan elementos visuales
+        self.save_video = save_video
 
         # Tracking de rumas
         self.tracker = RumaTracker()
         
-        # NUEVO: Tracking de objetos (personas/vehículos)
+        # Tracking de objetos (personas/vehículos)
         self.object_tracker = ObjectTracker(
             interaction_threshold=40,      # 40 frames = ~1.6s @ 25fps
             max_distance_match=100         # 100 píxeles máximo para matching
@@ -63,6 +69,8 @@ class RumaMonitor:
         # Envio de datos
         self.send = True # Envio de datos a la nube
         self.save = False # Guardado de datos local
+        
+        print("[INFO] RumaMonitor inicializado correctamente")
 
     def process_detections(self, frame, frame_count):
         """
@@ -196,7 +204,7 @@ class RumaMonitor:
                                 cv2.fillPoly(overlay, [mask.astype(np.int32)], self.RUMA_COLOR)
                                 frame = cv2.addWeighted(overlay, 0.3, frame, 0.7, 0)
 
-                            # NUEVA LÓGICA: Verificar interacciones usando ObjectTracker
+                            # Verificar interacciones usando ObjectTracker
                             is_interacting = closest_ruma_id in objects_per_ruma and len(objects_per_ruma[closest_ruma_id]) > 0
                             
                             # Actualizar estado de interacción de la ruma
@@ -397,7 +405,7 @@ class RumaMonitor:
             save_alert(
                 alert_type='nueva_ruma',
                 ruma_data=ruma_data,
-                frame=frame_with_drawings, #None
+                frame=frame_with_drawings,
                 frame_count=frame_count,
                 fps=fps,
                 camera_sn=self.camera_sn,
