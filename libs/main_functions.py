@@ -116,6 +116,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     frames_processed = 0     # Frames procesados con YOLO
     frames_written = 0       # Frames escritos al video
     frames_read_errors = 0   # Errores al leer del buffer
+    total_skipped_from_buffer = 0  # Frames saltados del buffer para tomar el más reciente
     
     # Límite de FPS de PROCESAMIENTO
     max_processing_fps = 6.0
@@ -154,11 +155,24 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
                         break
                 
                 # ============================================================================
-                # LEER FRAME DEL THREAD DE CAPTURA
+                # LEER FRAME MÁS RECIENTE DEL THREAD (VACIAR BUFFER)
                 # ============================================================================
-                ret, frame = capture.read(timeout=1.0)
+                # Estrategia: Vaciar el buffer y tomar el frame más nuevo
+                # Esto evita procesar frames viejos mientras el buffer está lleno
                 
-                if not ret:
+                frame = None
+                frames_skipped_from_buffer = 0
+                
+                # Vaciar buffer hasta el frame más reciente
+                while True:
+                    ret, temp_frame = capture.read(timeout=0.001)  # 1ms timeout
+                    if not ret:
+                        break
+                    if frame is not None:
+                        frames_skipped_from_buffer += 1
+                    frame = temp_frame
+                
+                if frame is None:
                     frames_read_errors += 1
                     
                     # Si hay muchos errores consecutivos, verificar thread
@@ -167,11 +181,17 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
                             print("[ERROR] Thread de captura se detuvo")
                             break
                     
+                    time.sleep(0.01)  # Pequeña espera si no hay frames
                     continue
                 
-                # ✅ Frame recibido del thread
+                # ✅ Frame MÁS RECIENTE recibido del thread
                 frames_received += 1
                 stream_monitor.frame_read()
+                
+                # Contar frames que se saltaron del buffer para tomar el más nuevo
+                if frames_skipped_from_buffer > 0:
+                    frames_received += frames_skipped_from_buffer
+                    total_skipped_from_buffer += frames_skipped_from_buffer
                 
                 # Verificar límite (solo para MP4)
                 if frames_received >= end_frame:
@@ -238,6 +258,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
                                     f"📊 FPS:{fps_general:>5.1f} | "
                                     f"🧵 Captura:{capture_stats['capture_fps']:>5.1f} | "
                                     f"📦 Buf:{capture_stats['buffer_size']:>3}/{capture_stats['buffer_max']} | "
+                                    f"⏭️ BufSkip:{total_skipped_from_buffer:>5} | "
                                     f"🎯 R:{active_rumas} O:{active_objects}"
                                 )
                             else:
@@ -249,6 +270,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
                                     f"📊 FPS:{fps_general:>5.1f} | "
                                     f"🧵 Captura:{capture_stats['capture_fps']:>5.1f} | "
                                     f"📦 Buf:{capture_stats['buffer_size']:>3}/{capture_stats['buffer_max']} | "
+                                    f"⏭️ BufSkip:{total_skipped_from_buffer:>5} | "
                                     f"⏱️ ProcTime:{process_time*1000:>5.1f}ms | "
                                     f"🎯 R:{active_rumas} O:{active_objects}"
                                 )
@@ -257,6 +279,9 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
                 else:
                     # ❌ Frame rechazado por limitador
                     stream_monitor.frame_skipped()
+                    
+                    # Pequeño sleep para no saturar CPU cuando no procesamos
+                    time.sleep(0.01)  # 10ms = permite leer ~100 FPS del buffer
                     
                     # Escribir frame sin procesar
                     if save_video and out is not None and frames_received >= start_frame:
@@ -301,6 +326,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     print("📊 ESTADÍSTICAS DETALLADAS DE FRAMES")
     print(f"{'='*80}")
     print(f"📥 Frames recibidos del thread:       {frames_received:>8}")
+    print(f"   └─ Frames saltados del buffer:     {total_skipped_from_buffer:>8} (para tomar el más reciente)")
     print(f"⚙️  Frames después de limitador 6fps: {frames_limited:>8}")
     print(f"✅ Frames procesados (con YOLO):      {frames_processed:>8}")
     print(f"💾 Frames escritos al video:          {frames_written:>8}")
