@@ -1,7 +1,9 @@
 import os
+import time
 import torch
 import cv2
-from monitor.ruma_monitor import RumaMonitor 
+from monitor.ruma_monitor import RumaMonitor
+from utils.frame_stats_monitor import FrameStatsMonitor
 
 def process_video(video_path, output_path, start_time_sec, end_time_sec,
                   model_det_path, model_seg_path, detection_zone, camera_number, 
@@ -30,6 +32,12 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
         if camera_number not in detection_zone:
             raise ValueError(f"No hay zona definida para la cámara {camera_number}")
         detection_zone = detection_zone[camera_number]
+
+    # Inicializar monitor de estadísticas
+    stats_monitor = FrameStatsMonitor(
+        report_interval=5.0,  # Reportar cada 5 segundos
+        enable_console=True
+    )
 
     # Inicializar monitor con el flag de save_video
     monitor = RumaMonitor(model_det_path, model_seg_path, detection_zone, 
@@ -87,12 +95,23 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     consecutive_errors = 0
     max_consecutive_errors = 30  # Reintentar hasta 30 errores consecutivos
     
+    print(f"\n{'='*60}")
+    print("🚀 INICIANDO PROCESAMIENTO DE VIDEO")
+    print(f"{'='*60}\n")
+    
     with torch.no_grad():
         while cap.isOpened():
+            # Registrar frame recibido
+            stats_monitor.frame_received()
+            
+            # Medir tiempo de lectura
+            read_start = time.time()
             ret, frame = cap.read()
+            read_time = time.time() - read_start
             
             # Manejo de errores de lectura (importante para RTSP)
             if not ret:
+                stats_monitor.frame_dropped()
                 consecutive_errors += 1
                 print(f"[WARN] Error leyendo frame {frame_count} (errores consecutivos: {consecutive_errors})")
                 
@@ -104,6 +123,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
                 if use_rtsp:
                     print("[INFO] Intentando reconectar al stream RTSP...")
                     cap.release()
+                    time.sleep(2)  # Esperar antes de reconectar
                     cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
                     if not cap.isOpened():
                         print("[ERROR] No se pudo reconectar")
@@ -118,16 +138,35 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
                 print(f"[INFO] Alcanzado frame límite: {end_frame}")
                 break
 
+            # Procesar frame solo si está en el rango
             if frame_count >= start_frame:
+                # Medir tiempo total de procesamiento
+                process_start = time.time()
+                
                 processed_frame = monitor.process_frame(frame, frame_count, fps)
+                
+                process_time = time.time() - process_start
+                
+                # Registrar frame procesado con su tiempo
+                stats_monitor.frame_processed(process_time)
                 
                 # Solo escribir si save_video está activo
                 if save_video and out is not None:
                     out.write(processed_frame)
 
+                # Log cada 50 frames (más detallado)
                 if frame_count % 50 == 0:
-                    print(f"Procesados {frame_count} frames")
-                    print(f"Rumas activas: {sum(1 for r in monitor.tracker.rumas.values() if r.is_active)}")
+                    active_rumas = sum(1 for r in monitor.tracker.rumas.values() if r.is_active)
+                    active_objects = len(monitor.object_tracker.tracked_objects)
+                    print(
+                        f"[Frame {frame_count:>6}] "
+                        f"Proceso: {process_time*1000:>5.1f}ms | "
+                        f"Rumas: {active_rumas} | "
+                        f"Objetos: {active_objects}"
+                    )
+            else:
+                # Frame fuera del rango de procesamiento
+                stats_monitor.frame_dropped()
 
             frame_count += 1
 
@@ -135,8 +174,21 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     if out is not None:
         out.release()
 
+    # Reporte final
+    print("\n" + "="*60)
+    print("✅ PROCESAMIENTO COMPLETADO")
+    print("="*60)
+    
     if save_video:
-        print(f"Procesamiento completado. Video guardado en: {output_path}")
+        print(f"📹 Video guardado en: {output_path}")
     else:
-        print(f"Procesamiento completado (sin guardar video)")
-    print(f"Total de rumas detectadas: {len(monitor.tracker.rumas)}")
+        print(f"📊 Procesamiento sin grabación completado")
+    
+    print(f"🎯 Total de rumas detectadas: {len(monitor.tracker.rumas)}")
+    print(f"👥 Total de objetos trackeados: {len(monitor.object_tracker.tracked_objects)}")
+    
+    # Imprimir estadísticas finales
+    stats_monitor.print_final_report()
+    
+    # Retornar estadísticas para análisis posterior
+    return stats_monitor.get_stats_dict()
