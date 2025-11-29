@@ -12,8 +12,8 @@ class RumaTracker:
         
         # ⚙️ PARÁMETROS DE VALIDACIÓN
         self.min_frames_stable = 30  # 30 frames = ~1.2s @ 25fps (ajustable)
-        self.max_movement_px = 50    # Máximo 30 píxeles de movimiento permitido
-        self.max_candidate_age = 500 # Eliminar candidatos viejos después de 100 frames
+        self.max_movement_px = 30    # Máximo 30 píxeles de movimiento permitido
+        self.max_candidate_age = 100 # Eliminar candidatos viejos después de 100 frames
 
     def _calculate_distance(self, point1, point2):
         """Calcula distancia euclidiana entre dos puntos"""
@@ -32,6 +32,13 @@ class RumaTracker:
         return closest_ruma, min_distance
 
     def add_candidate_ruma(self, mask, centroid, frame_count, frame_shape, transformer=None):
+        """
+        Agrega o actualiza una ruma candidata.
+        
+        CRITERIOS DE VALIDACIÓN:
+        1. Debe permanecer estable (< max_movement_px) durante min_frames_stable frames
+        2. Si se mueve demasiado, se reinicia el contador
+        """
         key = f"candidate_{centroid[0]}_{centroid[1]}"
         
         # Buscar candidato cercano existente
@@ -62,7 +69,7 @@ class RumaTracker:
                 frames_elapsed = frame_count - candidate['first_frame']
                 
                 # ✅ VALIDACIÓN: Estable por suficiente tiempo
-                if (candidate['confirmations'] >= 3 and  # Al menos 3 detecciones
+                if (candidate['confirmations'] >= self.min_confirmations and
                     frames_elapsed >= self.min_frames_stable):
                     
                     # 🎉 CONFIRMAR COMO RUMA REAL
@@ -117,7 +124,7 @@ class RumaTracker:
         )
         if ruma.percentage <= 10:
             ruma.is_active = False
-            print(f"Ruma {ruma_id} eliminada (porcentaje: {ruma.percentage:.1f}%)")
+            print(f"❌ Ruma {ruma_id} eliminada (porcentaje: {ruma.percentage:.1f}%)")
 
     def store_ruma_summary(self, ruma_id, ruma: RumaData, frame_shape):
         self.ruma_summary[ruma_id] = {
@@ -139,7 +146,7 @@ class RumaTracker:
             frames_since_seen = frame_count - candidate['last_seen_frame']
             total_age = frame_count - candidate['first_frame']
             
-            if frames_since_seen > 300 or total_age > self.max_candidate_age:
+            if frames_since_seen > 30 or total_age > self.max_candidate_age:
                 to_remove.append(key)
         
         for key in to_remove:
