@@ -5,8 +5,7 @@ from monitor.ruma_monitor import RumaMonitor
 
 def process_video(video_path, output_path, start_time_sec, end_time_sec,
                   model_det_path, model_seg_path, detection_zone, camera_number, 
-                  camera_sn, api_url, transformer, use_rtsp=True, save_video=False,
-                  target_size=1024):
+                  camera_sn, api_url, transformer, use_rtsp=True, save_video=False):
     """
     Procesa un video completo usando el monitor de rumas.
 
@@ -24,7 +23,6 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
         transformer: Transformador de homografía.
         use_rtsp (bool): True si es stream RTSP, False si es archivo local.
         save_video (bool): Si True, guarda el video procesado. Si False, solo procesa sin guardar.
-        target_size (int): Tamaño objetivo para resize (default: 1024).
     """
 
     # Si detection_zone es un dict, seleccionamos la zona correspondiente
@@ -33,17 +31,9 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
             raise ValueError(f"No hay zona definida para la cámara {camera_number}")
         detection_zone = detection_zone[camera_number]
 
-    # Inicializar monitor con el flag de save_video y target_size
-    monitor = RumaMonitor(
-        model_det_path, 
-        model_seg_path, 
-        detection_zone, 
-        camera_sn, 
-        api_url, 
-        transformer, 
-        save_video=save_video,
-        target_size=target_size  # NUEVO parámetro
-    )
+    # Inicializar monitor con el flag de save_video
+    monitor = RumaMonitor(model_det_path, model_seg_path, detection_zone, 
+                         camera_sn, api_url, transformer, save_video=save_video)
 
     # Configurar opciones de captura según use_rtsp
     if use_rtsp:
@@ -80,24 +70,28 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
     if use_rtsp:
         start_frame = 0
         if save_video:
+            # Si se guarda video RTSP, usar end_time_sec como duración
             end_frame = int(end_time_sec * fps)
             print(f"[INFO] Stream RTSP con grabación: grabando aproximadamente {end_frame} frames")
         else:
+            # Si NO se guarda video, procesar indefinidamente
             end_frame = float('inf')
             print("[INFO] Stream RTSP sin grabación: procesamiento continuo (Ctrl+C para detener)")
     else:
+        # Para archivos MP4, usar start_time_sec y end_time_sec
         start_frame = int(start_time_sec * fps)
         end_frame = int(end_time_sec * fps)
         print(f"Procesando frames {start_frame} a {end_frame}")
 
     frame_count = 0
     consecutive_errors = 0
-    max_consecutive_errors = 30
+    max_consecutive_errors = 30  # Reintentar hasta 30 errores consecutivos
     
     with torch.no_grad():
         while cap.isOpened():
             ret, frame = cap.read()
             
+            # Manejo de errores de lectura (importante para RTSP)
             if not ret:
                 consecutive_errors += 1
                 print(f"[WARN] Error leyendo frame {frame_count} (errores consecutivos: {consecutive_errors})")
@@ -106,6 +100,7 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
                     print("[ERROR] Demasiados errores consecutivos. Finalizando...")
                     break
                     
+                # Para RTSP, intentar reconectar
                 if use_rtsp:
                     print("[INFO] Intentando reconectar al stream RTSP...")
                     cap.release()
@@ -115,8 +110,10 @@ def process_video(video_path, output_path, start_time_sec, end_time_sec,
                         break
                 continue
             
+            # Resetear contador de errores si se lee correctamente
             consecutive_errors = 0
             
+            # Verificar si ya llegamos al límite
             if frame_count >= end_frame:
                 print(f"[INFO] Alcanzado frame límite: {end_frame}")
                 break
