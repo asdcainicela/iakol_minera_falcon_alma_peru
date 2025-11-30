@@ -130,15 +130,15 @@ class RumaMonitor:
                             movement_alerts_to_send.add(internal_id)
                         
                         # Solo dibujar si save_video está activo
-                        if self.save_video:
-                            color = self.PERSON_COLOR if cls == 0 else self.VEHICLE_COLOR
-                            label = f'{object_type} ID:{internal_id}'
-                            
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                            frame = put_text_with_background(
-                                frame, label, (x1, y1 - 5),
-                                color=self.TEXT_COLOR_WHITE, font_scale=0.6
-                            )
+                        #if self.save_video:
+                        color = self.PERSON_COLOR if cls == 0 else self.VEHICLE_COLOR
+                        label = f'{object_type} ID:{internal_id}'
+                        
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                        frame = put_text_with_background(
+                            frame, label, (x1, y1 - 5),
+                            color=self.TEXT_COLOR_WHITE, font_scale=0.6
+                        )
                         
                         # Verificar interacción con rumas
                         for ruma_id, ruma in self.tracker.rumas.items():
@@ -199,10 +199,10 @@ class RumaMonitor:
                             ruma = self.tracker.rumas[closest_ruma_id]
 
                             # Solo dibujar si save_video está activo
-                            if self.save_video:
-                                overlay = frame.copy()
-                                cv2.fillPoly(overlay, [mask.astype(np.int32)], self.RUMA_COLOR)
-                                frame = cv2.addWeighted(overlay, 0.3, frame, 0.7, 0)
+                            #if self.save_video:
+                            overlay = frame.copy()
+                            cv2.fillPoly(overlay, [mask.astype(np.int32)], self.RUMA_COLOR)
+                            frame = cv2.addWeighted(overlay, 0.3, frame, 0.7, 0)
 
                             # Verificar interacciones usando ObjectTracker
                             is_interacting = closest_ruma_id in objects_per_ruma and len(objects_per_ruma[closest_ruma_id]) > 0
